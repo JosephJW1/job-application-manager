@@ -1,0 +1,38 @@
+Add values table
+
+UI design
+
+Add logic (and most likely data)
+for flagging explanations in
+match explanation where the
+explanation has changed since it
+was added and have an option to
+update explanation to current.
+
+way to add/update explanation
+to experience while in job add
+require experience
+
+Back to list if page clicked in
+nav bar.
+
+better tables especially for add
+experiences.
+
+Multiple select for match
+experience with slick blocks and
+display of explanations when
+experience slected.
+
+Continually analyse strucutre of
+everything.
+
+UI improvement
+Requirments UI extracted
+
+Bugs:
+- Cant undo explanation insert when inserted without active cursor
+
+Explanation link to requirement opening custruction.
+
+Data saved to user

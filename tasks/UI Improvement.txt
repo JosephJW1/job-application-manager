@@ -1,0 +1,11 @@
+Extract the edit requirments UI out of base job form, when an item is clicked, with below requirements:
+
+    Job title at top.
+
+    Return (warns unsaved changes)
+    
+    Side bar of all requirements (revealed when moused over) to switch requirement (warns unsaved changes)
+
+    Warning when deleting a requirement's matching experience that has explanation.
+
+    Add new skill demo to experience in req edit

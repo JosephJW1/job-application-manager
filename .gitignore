@@ -1,0 +1,25 @@
+# --- Dependencies (Ignore in root and subfolders) ---
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# --- System Files ---
+.DS_Store
+Thumbs.db
+.vscode/
+
+# --- Environment Variables (CRITICAL: Do not share keys) ---
+.env
+.env.local
+.env.*.local
+
+# --- Client (Vite/React) ---
+client/dist/
+client/build/
+client/.env
+
+# --- Server (Node/Express) ---
+server/dist/
+server/build/
+server/.env
+server/config/config.json
