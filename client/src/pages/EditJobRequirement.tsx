@@ -54,7 +54,9 @@ export const EditJobRequirement = () => {
   const [experiences, setExperiences] = useState<Experience[]>([]);
   const [activeMatchIndices, setActiveMatchIndices] = useState<{[key: number]: number}>({});
   
-  const [filterByRelatedSkills, setFilterByRelatedSkills] = useState(false);
+  // UPDATED: Default to true
+  const [filterByRelatedSkills, setFilterByRelatedSkills] = useState(true);
+  const [filterByAllSkills, setFilterByAllSkills] = useState(false); 
 
   const fetchLists = async () => {
     try {
@@ -306,14 +308,61 @@ export const EditJobRequirement = () => {
                 }
            };
 
-           // --- FILTER LOGIC ---
+           // --- REMOVE HANDLER (NEW) ---
+           const handleRemoveMatch = (match: any, index: number) => {
+                const isTemp = match.experienceId < 0;
+                const hasExplanation = match.matchExplanation && match.matchExplanation.trim().length > 0;
+                
+                let shouldWarn = false;
+
+                if (isTemp) {
+                    // If it is a newly added temp experience, check if it has any user-entered details
+                    const exp = experiences.find(e => e.id === match.experienceId);
+                    if (exp) {
+                        const hasDetails = 
+                            (exp.description && exp.description.trim().length > 0) ||
+                            (exp.position && exp.position.trim().length > 0) ||
+                            (exp.location && exp.location.trim().length > 0) ||
+                            (exp.duration && exp.duration.trim().length > 0) ||
+                            (exp.DemonstratedSkills && exp.DemonstratedSkills.length > 0);
+                        
+                        if (hasDetails || hasExplanation) shouldWarn = true;
+                    }
+                } else {
+                    // Existing experience: Warn if user typed a match explanation that would be lost
+                    if (hasExplanation) shouldWarn = true;
+                }
+
+                if (shouldWarn) {
+                    if (!window.confirm("You have entered details for this match. Removing it will discard them. Continue?")) {
+                        return;
+                    }
+                }
+
+                const newMatches = [...currentReq.matches];
+                newMatches.splice(index, 1);
+                setFieldValue(`requirements.${reqIndex}.matches`, newMatches);
+                setActiveMatchIndices(prev => ({...prev, [reqIndex]: 0}));
+           };
+
+           // --- FILTER LOGIC (UPDATED) ---
            const reqSkillIds = (currentReq.skillIds || []).map((id: any) => id.toString());
 
-           const filteredExperiences = filterByRelatedSkills
-              ? experiences.filter(exp => 
-                  (exp.DemonstratedSkills || []).some((s: any) => reqSkillIds.includes(s.id.toString()))
-                )
-              : experiences;
+           const filteredExperiences = experiences.filter(exp => {
+                if (reqSkillIds.length === 0) return true;
+
+                const expSkillIds = (exp.DemonstratedSkills || []).map((s: any) => s.id.toString());
+                
+                if (filterByAllSkills) {
+                     return reqSkillIds.every((reqId: string) => expSkillIds.includes(reqId));
+                }
+                
+                if (filterByRelatedSkills) {
+                     return reqSkillIds.some((reqId: string) => expSkillIds.includes(reqId));
+                }
+                
+                return true;
+           });
 
            return (
             <Form>
@@ -356,7 +405,6 @@ export const EditJobRequirement = () => {
                   <div style={{ background: "white", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0", marginTop: "15px" }}>
                       <label style={{marginBottom: "10px", display: "block"}}>Matching Experiences</label>
                       
-                      {/* UPDATED: SearchableDropdown with Custom Render & Header Checkbox */}
                       <SearchableDropdown 
                           label="" 
                           name={`requirements.${reqIndex}.matches.NEW`}
@@ -374,34 +422,58 @@ export const EditJobRequirement = () => {
                              </div>
                           )}
 
-                          // FIX: Properly styled checkbox container to prevent wrapping/sizing issues
                           headerContent={
-                            <label style={{ 
-                                display: "flex", 
-                                alignItems: "center", 
-                                fontSize: "0.85rem", 
-                                cursor: "pointer", 
-                                marginBottom: 0,
-                                fontWeight: "normal",
-                                color: "var(--text-muted)"
-                            }}>
-                                <input 
-                                    type="checkbox" 
-                                    checked={filterByRelatedSkills} 
-                                    onChange={(e) => setFilterByRelatedSkills(e.target.checked)} 
-                                    style={{ 
-                                        width: "auto",      // FIX: Override global 100% width
-                                        marginBottom: 0,    // FIX: Override global bottom margin
-                                        marginRight: "6px" 
-                                    }}
-                                />
-                                <span style={{ whiteSpace: "nowrap" }}>Filter by Related Skills</span>
-                            </label>
+                            <div style={{ display: "flex", gap: "15px", alignItems: "center", marginBottom: 0 }}>
+                                <label style={{ 
+                                    display: "flex", 
+                                    alignItems: "center", 
+                                    fontSize: "0.85rem", 
+                                    cursor: "pointer", 
+                                    marginBottom: 0,
+                                    fontWeight: "normal",
+                                    color: "var(--text-muted)"
+                                }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filterByRelatedSkills} 
+                                        onChange={(e) => {
+                                            setFilterByRelatedSkills(e.target.checked);
+                                        }} 
+                                        style={{ width: "auto", marginBottom: 0, marginRight: "6px" }}
+                                    />
+                                    <span style={{ whiteSpace: "nowrap" }}>Filter by Related Skills</span>
+                                </label>
+
+                                <label style={{ 
+                                    display: "flex", 
+                                    alignItems: "center", 
+                                    fontSize: "0.85rem", 
+                                    cursor: "pointer", 
+                                    marginBottom: 0,
+                                    fontWeight: "normal",
+                                    color: "var(--text-muted)"
+                                }}>
+                                    <input 
+                                        type="checkbox" 
+                                        checked={filterByAllSkills} 
+                                        onChange={(e) => {
+                                            setFilterByAllSkills(e.target.checked);
+                                            if (e.target.checked) setFilterByRelatedSkills(true);
+                                        }} 
+                                        style={{ width: "auto", marginBottom: 0, marginRight: "6px" }}
+                                    />
+                                    <span style={{ whiteSpace: "nowrap" }}>Filter by ALL Skills</span>
+                                </label>
+                            </div>
                           }
 
                           onSelect={(id: number) => {
                               const currentMatches = currentReq.matches || [];
-                              if (!currentMatches.find((m: any) => m.experienceId === id)) {
+                              const existingIndex = currentMatches.findIndex((m: any) => m.experienceId === id);
+                              
+                              if (existingIndex >= 0) {
+                                  setActiveMatchIndices(prev => ({...prev, [reqIndex]: existingIndex}));
+                              } else {
                                   setFieldValue(`requirements.${reqIndex}.matches`, [
                                       ...currentMatches, 
                                       { experienceId: id, matchExplanation: "" }
@@ -411,97 +483,158 @@ export const EditJobRequirement = () => {
                           }}
                       />
 
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "5px", marginBottom: "15px", marginTop: "10px" }}>
-                          {currentReq.matches && currentReq.matches.map((match: any, matchIdx: number) => {
-                              const isActive = (activeMatchIndices[reqIndex] ?? 0) === matchIdx;
-                              const isTemp = match.experienceId < 0; 
+                      {/* --- PINNED TAB INTERFACE --- */}
+                      {currentReq.matches && currentReq.matches.length > 0 && (
+                        <>
+                          <div className="tabs-row">
+                              {/* 1. Render ONLY the Active Tab (Pinned) */}
+                              {(() => {
+                                  const activeIndex = activeMatchIndices[reqIndex] ?? 0;
+                                  const activeMatch = currentReq.matches[activeIndex] || currentReq.matches[0]; 
+                                  const isTemp = activeMatch.experienceId < 0;
 
-                              return (
-                                <div 
-                                    key={match.experienceId}
-                                    className={ isActive ? "chip active" : "chip" }
-                                    style={{ 
-                                        display: "inline-flex",
-                                        alignItems: "stretch",
-                                        border: "1px solid",
-                                        borderColor: isActive ? "var(--primary)" : "#ddd",
-                                        background: isActive ? "#e0f2fe" : "white",
-                                        color: isActive ? "var(--primary)" : "inherit",
-                                        padding: 0,
-                                        overflow: "hidden"
-                                    }}
-                                >
-                                    <EditableInsertButton 
-                                        targetId={`match-explanation-${reqIndex}`}
-                                        value={getExpTitle(match.experienceId)}
-                                        onSave={(val) => updateExperience(match.experienceId, 'title', val)}
-                                        onInsert={(e) => {
-                                            if (isActive) {
-                                                insertTextAtCursor(`match-explanation-${reqIndex}`, getExpTitle(match.experienceId), e);
-                                            } else {
-                                                setActiveMatchIndices(prev => ({...prev, [reqIndex]: matchIdx}));
-                                            }
-                                        }}
-                                        style={{
-                                            border: "none",
-                                            background: "transparent",
-                                            color: "inherit",
-                                            paddingRight: 0, 
-                                            fontWeight: 500,
-                                            fontSize: "0.85rem",
-                                            minWidth: "60px"
-                                        }}
-                                    />
-                                    
-                                    {isTemp && (
+                                  return (
+                                    <div className="tab-static">
+                                        <EditableInsertButton 
+                                            targetId={`match-explanation-${reqIndex}`}
+                                            value={getExpTitle(activeMatch.experienceId)}
+                                            onSave={(val) => updateExperience(activeMatch.experienceId, 'title', val)}
+                                            onInsert={(e) => insertTextAtCursor(`match-explanation-${reqIndex}`, getExpTitle(activeMatch.experienceId), e)}
+                                            style={{
+                                                border: "none",
+                                                background: "transparent",
+                                                color: "inherit",
+                                                paddingRight: 0, 
+                                                fontWeight: "inherit",
+                                                fontSize: "0.9rem",
+                                                minWidth: "60px"
+                                            }}
+                                        />
+                                        
+                                        {isTemp && (
+                                            <span 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleSaveTempExperience(activeMatch.experienceId);
+                                                }}
+                                                style={{ 
+                                                    padding: "0 4px", 
+                                                    cursor: "pointer",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    color: "var(--success)", 
+                                                    fontSize: "0.8rem"
+                                                }}
+                                                title="Save Experience to Database"
+                                            >
+                                                💾
+                                            </span>
+                                        )}
+
                                         <span 
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                handleSaveTempExperience(match.experienceId);
+                                                const indexToRemove = currentReq.matches.indexOf(activeMatch);
+                                                if (indexToRemove > -1) {
+                                                    handleRemoveMatch(activeMatch, indexToRemove);
+                                                }
                                             }}
                                             style={{ 
-                                                padding: "0 8px", 
+                                                padding: "0 4px", 
                                                 cursor: "pointer",
-                                                borderLeft: "1px solid rgba(0,0,0,0.1)",
-                                                height: "auto",
+                                                marginLeft: "4px",
                                                 display: "flex",
                                                 alignItems: "center",
-                                                color: "var(--success)", 
-                                                background: "rgba(16, 185, 129, 0.1)"
+                                                fontSize: "1.1rem",
+                                                lineHeight: 1
                                             }}
-                                            title="Save Experience to Database"
+                                            title="Remove Match"
                                         >
-                                            💾
+                                            ×
                                         </span>
-                                    )}
+                                    </div>
+                                  );
+                              })()}
 
-                                    <span 
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            const newMatches = [...currentReq.matches];
-                                            newMatches.splice(matchIdx, 1);
-                                            setFieldValue(`requirements.${reqIndex}.matches`, newMatches);
-                                            setActiveMatchIndices(prev => ({...prev, [reqIndex]: 0}));
-                                        }}
-                                        style={{ 
-                                            padding: "0 8px", 
-                                            cursor: "pointer",
-                                            borderLeft: "1px solid rgba(0,0,0,0.1)",
-                                            height: "auto",
-                                            display: "flex",
-                                            alignItems: "center"
-                                        }}
-                                        title="Remove Match"
-                                    >
-                                        ×
-                                    </span>
-                                </div>
-                              );
-                          })}
-                      </div>
+                              {/* 2. Render the REST in the scrollable area */}
+                              <div className="tabs-scroll-area">
+                                  {currentReq.matches.map((match: any, matchIdx: number) => {
+                                      const activeIndex = activeMatchIndices[reqIndex] ?? 0;
+                                      const isActive = matchIdx === activeIndex;
+                                      
+                                      if (isActive) return null;
 
-                      {currentReq.matches && currentReq.matches.length > 0 && (
-                          <div style={{ borderTop: "1px solid #eee", paddingTop: "15px", marginTop: "10px" }}>
+                                      const isTemp = match.experienceId < 0;
+
+                                      return (
+                                        <div 
+                                            key={match.experienceId}
+                                            className="tab-scrollable"
+                                            onClick={() => setActiveMatchIndices(prev => ({...prev, [reqIndex]: matchIdx}))}
+                                        >
+                                            <EditableInsertButton 
+                                                targetId={`match-explanation-${reqIndex}`} 
+                                                value={getExpTitle(match.experienceId)}
+                                                onSave={(val) => updateExperience(match.experienceId, 'title', val)}
+                                                onInsert={() => {
+                                                    setActiveMatchIndices(prev => ({...prev, [reqIndex]: matchIdx}));
+                                                }}
+                                                style={{
+                                                    border: "none",
+                                                    background: "transparent",
+                                                    color: "inherit",
+                                                    paddingRight: 0, 
+                                                    fontWeight: "inherit",
+                                                    fontSize: "0.9rem",
+                                                    minWidth: "60px"
+                                                }}
+                                            />
+                                            
+                                            {isTemp && (
+                                                <span 
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        handleSaveTempExperience(match.experienceId);
+                                                    }}
+                                                    style={{ 
+                                                        padding: "0 4px", 
+                                                        cursor: "pointer",
+                                                        display: "flex",
+                                                        alignItems: "center",
+                                                        color: "var(--success)", 
+                                                        fontSize: "0.8rem"
+                                                    }}
+                                                    title="Save Experience to Database"
+                                                >
+                                                    💾
+                                                </span>
+                                            )}
+
+                                            <span 
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleRemoveMatch(match, currentReq.matches.indexOf(match));
+                                                }}
+                                                style={{ 
+                                                    padding: "0 4px", 
+                                                    cursor: "pointer",
+                                                    marginLeft: "4px",
+                                                    display: "flex",
+                                                    alignItems: "center",
+                                                    fontSize: "1.1rem",
+                                                    lineHeight: 1
+                                                }}
+                                                title="Remove Match"
+                                            >
+                                                ×
+                                            </span>
+                                        </div>
+                                      );
+                                  })}
+                              </div>
+                          </div>
+
+                          <div className="tab-content">
                               {(() => {
                                   const currentIndex = activeMatchIndices[reqIndex] ?? 0;
                                   const matchData = currentReq.matches[currentIndex] || currentReq.matches[0];
@@ -628,6 +761,7 @@ export const EditJobRequirement = () => {
                                               experienceId={matchData.experienceId} 
                                               experiences={experiences} 
                                               allSkills={skills} 
+                                              relatedSkillIds={reqSkillIds} // UPDATED: Passed prop
                                               onSkillDemoUpdate={updateSkillDemonstration}
                                               onAddSkillDemo={handleAddSkillDemonstration} 
                                               onDeleteSkillDemo={handleDeleteSkillDemonstration}
@@ -637,6 +771,7 @@ export const EditJobRequirement = () => {
                                   );
                               })()}
                           </div>
+                        </>
                       )}
                   </div>
               </div>

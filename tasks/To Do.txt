@@ -36,3 +36,5 @@ Bugs:
 Explanation link to requirement opening custruction.
 
 Data saved to user
+
+Make repo suitable for public / portfolio

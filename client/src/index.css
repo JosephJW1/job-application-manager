@@ -193,3 +193,90 @@ button {
 }
 
 @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+/* --- Tabs (Pinned Layout) --- */
+
+/* The container that creates the border line */
+.tabs-row {
+  display: flex;
+  align-items: flex-end;
+  border-bottom: 1px solid #e2e8f0;
+  margin-top: 15px;
+  width: 100%;
+}
+
+/* The Active Tab - Pinned to left, solid connection */
+.tab-static {
+  flex-shrink: 0; 
+  margin-bottom: -1px; /* Overlap the bottom border */
+  z-index: 10;
+  border: 1px solid #e2e8f0;
+  border-bottom: 1px solid white; /* Blend with content */
+  background: white;
+  color: var(--primary);
+  font-weight: 600;
+  border-radius: 8px 8px 0 0;
+  
+  /* Compensation for Scrollbar: 8px base + 6px scrollbar = 14px bottom padding */
+  padding: 8px 12px 14px 12px;
+  
+  display: inline-flex;
+  align-items: center;
+  cursor: default;
+  user-select: none;
+}
+
+/* The Scrollable Area - To the right of the pinned tab */
+.tabs-scroll-area {
+  flex: 1;
+  display: flex;
+  overflow-x: auto;
+  gap: 2px;
+  padding-left: 2px;
+  margin-bottom: 0;
+  padding-bottom: 0; 
+}
+
+/* Custom Scrollbar to ensure fixed height for alignment compensation */
+.tabs-scroll-area::-webkit-scrollbar {
+  height: 6px; 
+}
+.tabs-scroll-area::-webkit-scrollbar-track {
+  background: transparent; 
+}
+.tabs-scroll-area::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; 
+  border-radius: 3px;
+}
+
+/* The Inactive Tabs */
+.tab-scrollable {
+  display: inline-flex;
+  align-items: center;
+  padding: 8px 12px; /* Standard Padding */
+  cursor: pointer;
+  background-color: #f8fafc;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  transition: all 0.2s;
+  margin-bottom: 0;
+  user-select: none;
+}
+
+.tab-scrollable:hover {
+  background-color: #f1f5f9;
+  color: var(--primary);
+}
+
+.tab-content {
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 20px;
+  text-align: left;
+}

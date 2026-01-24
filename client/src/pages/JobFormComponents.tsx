@@ -187,14 +187,16 @@ export const SearchableDropdown = ({
   onOptionCreated,
   onRename,
   placeholder,
-  renderOption, // NEW: Custom renderer for options
-  headerContent // NEW: Content to put next to label
+  renderOption,
+  headerContent 
 }: any) => {
   const { values, setFieldValue } = useFormikContext<any>() || {};
   const [search, setSearch] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const [filteredOptions, setFilteredOptions] = useState<any[]>([]);
+  
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const getRawValue = () => {
     if (!name || !values) return undefined;
@@ -248,7 +250,10 @@ export const SearchableDropdown = ({
       if (!search.trim()) return;
 
       const exactMatch = options.find((o: any) => o.title.toLowerCase() === search.toLowerCase());
-      const targetMatch = exactMatch || (filteredOptions.length > 0 ? filteredOptions[0] : null);
+      
+      // LOGIC: Prefer creation if it's not an exact match
+      const canCreate = !!onCreate || !!createEndpoint;
+      const targetMatch = exactMatch || (!canCreate && filteredOptions.length > 0 ? filteredOptions[0] : null);
 
       if (targetMatch) { 
           handleSelect(targetMatch.id); 
@@ -259,6 +264,7 @@ export const SearchableDropdown = ({
         onCreate(search);
         setSearch("");
         setIsOpen(false);
+        if (inputRef.current) inputRef.current.blur();
       } else if (createEndpoint) {
         try {
           const res = await api.post(createEndpoint, { title: search });
@@ -273,7 +279,6 @@ export const SearchableDropdown = ({
 
   return (
     <div ref={wrapperRef} style={{ marginBottom: label ? "1.2rem" : 0, position: "relative", width: "100%" }}>
-      {/* UPDATED: Label Row with HeaderContent support */}
       {(label || headerContent) && (
         <div style={{display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "5px"}}>
            {label && <label style={{marginBottom: 0}}>{label}</label>}
@@ -282,11 +287,16 @@ export const SearchableDropdown = ({
       )}
       
       <input 
+        ref={inputRef} 
         type="text" 
         placeholder={placeholder || (multiple || onSelect ? "+ Add item..." : "Select or Type to create...")} 
         value={search} 
-        onChange={(e) => setSearch(e.target.value)} 
+        onChange={(e) => {
+            setSearch(e.target.value);
+            if (!isOpen) setIsOpen(true);
+        }} 
         onFocus={() => setIsOpen(true)} 
+        onClick={() => { if(!isOpen) setIsOpen(true); }}
         onKeyDown={handleKeyDown} 
         autoComplete="off" 
         style={{ marginBottom: 0, width: "100%" }} 
@@ -303,7 +313,6 @@ export const SearchableDropdown = ({
                 onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"} 
                 onMouseLeave={(e) => e.currentTarget.style.background = "white"}
               >
-                {/* UPDATED: Use renderOption if provided */}
                 {renderOption ? renderOption(opt) : opt.title}
               </div>
             ))
@@ -361,17 +370,22 @@ export const SearchableDropdown = ({
 };
 
 // --- COMPONENT: EXPLANATION LIST ---
-export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated }: any) => {
+export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated }: any) => {
   if (!experienceId) return null;
   const selectedExp = experiences.find((e: any) => e.id.toString() === experienceId.toString());
   if (!selectedExp) return null;
   
   const displaySkills = selectedExp.DemonstratedSkills || [];
   
-  // State for adding new skill
+  const [filterRelated, setFilterRelated] = useState(true);
   const [newSkillId, setNewSkillId] = useState<number | null>(null);
   const [newExplanation, setNewExplanation] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+
+  // Filter skills to display based on the checkbox
+  const visibleSkills = filterRelated 
+    ? displaySkills.filter((s: any) => relatedSkillIds && relatedSkillIds.includes(s.id.toString()))
+    : displaySkills;
 
   // Available skills to add (exclude those already in experience)
   const availableSkills = (allSkills || []).filter((s: any) => !displaySkills.find((es: any) => es.id === s.id));
@@ -386,10 +400,24 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   };
 
   return (
-    <div style={{ marginTop: "10px" }}> 
+    <div style={{ marginTop: "20px" }}> 
+      {/* Title */}
+      <label style={{marginBottom: "10px", display: "block"}}>Skill Demonstrations</label>
+
+      {/* Checkbox to filter related skills */}
+      <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", cursor: "pointer", marginBottom: "8px", display: "flex", alignItems: "center" }}>
+           <input 
+             type="checkbox" 
+             checked={filterRelated} 
+             onChange={e => setFilterRelated(e.target.checked)} 
+             style={{ width: "auto", margin: "0 6px 0 0", marginBottom: 0 }} 
+           />
+           Show only Related Skills
+      </label>
+
       <div style={{ display: "grid", gap: "8px" }}>
         {/* EXISTING ITEMS */}
-        {displaySkills.map((s: any) => (
+        {visibleSkills.map((s: any) => (
           <div key={s.id} style={{ display: "grid", gridTemplateColumns: "160px 1fr auto", gap: "8px", alignItems: "stretch" }}>
              {/* Column 1: Title */}
              <button 
