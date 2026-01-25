@@ -1,12 +1,36 @@
 const express = require("express");
 const router = express.Router();
-const { Skill, JobTag } = require("../models");
+const { Skill, JobTag, ExpSkillDemo, Requirement } = require("../models");
 const { validateToken } = require("../middlewares/AuthMiddleware");
 
 // --- SKILLS ---
 router.get("/skills", async (req, res) => {
   const list = await Skill.findAll();
   res.json(list);
+});
+
+// Get usage counts for a skill
+router.get("/skills/:id/usage", validateToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const experienceCount = await ExpSkillDemo.count({
+      where: { SkillId: id }
+    });
+
+    const requirementCount = await Requirement.count({
+      include: [{
+        model: Skill,
+        where: { id: id }, 
+        required: true     
+      }]
+    });
+
+    res.json({ experienceCount, requirementCount });
+  } catch (e) {
+    console.error("Usage Check Error:", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 router.post("/skills", validateToken, async (req, res) => {
@@ -16,7 +40,7 @@ router.post("/skills", validateToken, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// [NEW] Allow renaming a skill
+// Rename a skill
 router.put("/skills/:id", validateToken, async (req, res) => {
   try {
     const { id } = req.params;
@@ -28,6 +52,19 @@ router.put("/skills/:id", validateToken, async (req, res) => {
 router.delete("/skills/:id", validateToken, async (req, res) => {
   try {
     const { id } = req.params;
+
+    // Handle ExpSkillDemo Preservation
+    const demos = await ExpSkillDemo.findAll({ where: { SkillId: id } });
+    
+    for (const demo of demos) {
+      if (demo.explanation && demo.explanation.trim() !== "") {
+        demo.SkillId = null;
+        await demo.save();
+      } else {
+        await demo.destroy();
+      }
+    }
+
     await Skill.destroy({ where: { id } });
     res.json({ message: "Deleted" });
   } catch (e) { res.status(500).json({ error: e.message }); }

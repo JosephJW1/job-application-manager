@@ -69,12 +69,33 @@ export const CreateSimple = ({ title, endpoint }: CreateSimpleProps) => {
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure?")) return;
+    // [MODIFIED] Custom warning for Skills
+    if (title === "Skill") {
+      try {
+        const usageRes = await api.get(`${endpoint}/${id}/usage`);
+        const { experienceCount, requirementCount } = usageRes.data;
+        
+        if (experienceCount > 0 || requirementCount > 0) {
+          const msg = `This skill is used in ${experienceCount} experience demos and ${requirementCount} requirements.\n\nDeleting it will remove it from these items (explanations will be preserved for experience demos).\n\nAre you sure you want to delete it?`;
+          if (!window.confirm(msg)) return;
+        } else {
+          if (!window.confirm("Are you sure?")) return;
+        }
+      } catch (err) {
+        // Fallback if usage check fails
+        if (!window.confirm("Are you sure you want to delete this skill?")) return;
+      }
+    } else {
+      // Standard warning for other lists
+      if (!window.confirm("Are you sure?")) return;
+    }
+
     try {
       await api.delete(`${endpoint}/${id}`); 
       fetchItems();
     } catch (err: any) {
       console.error(err);
+      alert("Error: " + (err.response?.data?.error || err.message));
     }
   };
 

@@ -88,15 +88,23 @@ export const EditableInsertButton = ({ value, placeholder, targetId, onSave, onI
 
   const { padding, paddingLeft, paddingRight, paddingTop, paddingBottom, ...safeStyle } = style || {};
 
+  const borderColor = isEditing ? "var(--primary)" : "#cbd5e1";
+
   const containerStyle: React.CSSProperties = {
-    ...safeStyle,
     position: "relative", 
     display: "inline-flex", 
     alignItems: "stretch", 
     padding: 0,
     overflow: "hidden",
-    border: isEditing ? "1px solid var(--primary)" : (style?.border || "1px solid #cbd5e1"),
     cursor: isEditing ? "default" : "pointer",
+    
+    // Explicit borders to avoid React warnings when overriding in safeStyle
+    borderTop: `1px solid ${borderColor}`,
+    borderBottom: `1px solid ${borderColor}`,
+    borderLeft: `1px solid ${borderColor}`,
+    borderRight: `1px solid ${borderColor}`,
+    
+    ...safeStyle,
   };
 
   const textStyle: React.CSSProperties = {
@@ -188,10 +196,15 @@ export const SearchableDropdown = ({
   onRename,
   placeholder,
   renderOption,
-  headerContent 
+  headerContent,
+  initialValue,
+  autoFocus,
+  onCancel,
+  initialSearch,
+  onDeleteOption
 }: any) => {
   const { values, setFieldValue } = useFormikContext<any>() || {};
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch || ""); 
   const [isOpen, setIsOpen] = useState(false);
   const [filteredOptions, setFilteredOptions] = useState<any[]>([]);
   
@@ -199,6 +212,7 @@ export const SearchableDropdown = ({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const getRawValue = () => {
+    if (initialValue !== undefined) return initialValue; 
     if (!name || !values) return undefined;
     const path = name.split('.');
     let val = values;
@@ -217,26 +231,52 @@ export const SearchableDropdown = ({
 
   useEffect(() => {
     const lowerSearch = search.toLowerCase();
-    setFilteredOptions(options.filter((opt: any) => 
-      !selectedIds.includes(opt.id) && opt.title.toLowerCase().includes(lowerSearch)
-    ));
+    
+    let filtered = options.filter((opt: any) => 
+      opt.title.toLowerCase().includes(lowerSearch) || selectedIds.includes(opt.id)
+    );
+
+    // Sort to put selected item first
+    filtered = filtered.sort((a: any, b: any) => {
+        const aSelected = selectedIds.includes(a.id);
+        const bSelected = selectedIds.includes(b.id);
+        if (aSelected && !bSelected) return -1;
+        if (!aSelected && bSelected) return 1;
+        return 0;
+    });
+
+    setFilteredOptions(filtered);
   }, [search, options, selectedIds]);
 
   useEffect(() => {
     const handleClickOutside = (event: any) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) setIsOpen(false);
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
+          setIsOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  useEffect(() => {
+      if (autoFocus && inputRef.current) {
+          setIsOpen(true);
+          inputRef.current.focus();
+      }
+  }, [autoFocus]);
+
   const handleSelect = (id: number) => {
-    if (onSelect) {
-        onSelect(id);
-    } else {
-        if (multiple) setFieldValue(name, [...selectedIds, id]);
-        else setFieldValue(name, id);
+    try {
+        if (onSelect) {
+            onSelect(id);
+        } else {
+            if (multiple) setFieldValue(name, [...selectedIds, id]);
+            else setFieldValue(name, id);
+        }
+    } catch (err) {
+        console.error("Selection error:", err);
     }
+    
     setSearch("");
     if(!multiple) setIsOpen(false);
   };
@@ -246,19 +286,13 @@ export const SearchableDropdown = ({
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      
       if (!search.trim()) return;
 
       const exactMatch = options.find((o: any) => o.title.toLowerCase() === search.toLowerCase());
-      
-      // LOGIC: Prefer creation if it's not an exact match
       const canCreate = !!onCreate || !!createEndpoint;
       const targetMatch = exactMatch || (!canCreate && filteredOptions.length > 0 ? filteredOptions[0] : null);
 
-      if (targetMatch) { 
-          handleSelect(targetMatch.id); 
-          return; 
-      }
+      if (targetMatch) { handleSelect(targetMatch.id); return; }
 
       if (onCreate) {
         onCreate(search);
@@ -272,10 +306,23 @@ export const SearchableDropdown = ({
           handleSelect(res.data.id);
         } catch (err: any) { alert("Error: " + err.message); }
       }
+    } else if (e.key === "Escape") {
+        e.preventDefault();
+        setIsOpen(false);
+        if (onCancel) onCancel();
     }
   };
   
   const getTitle = (id: number) => options.find((o: any) => o.id === id)?.title || id;
+
+  const handleBlur = (e: React.FocusEvent) => {
+      if (onCancel) {
+          if (wrapperRef.current && wrapperRef.current.contains(e.relatedTarget as Node)) {
+              return;
+          }
+          onCancel();
+      }
+  };
 
   return (
     <div ref={wrapperRef} style={{ marginBottom: label ? "1.2rem" : 0, position: "relative", width: "100%" }}>
@@ -288,6 +335,7 @@ export const SearchableDropdown = ({
       
       <input 
         ref={inputRef} 
+        autoFocus={autoFocus} 
         type="text" 
         placeholder={placeholder || (multiple || onSelect ? "+ Add item..." : "Select or Type to create...")} 
         value={search} 
@@ -295,6 +343,7 @@ export const SearchableDropdown = ({
             setSearch(e.target.value);
             if (!isOpen) setIsOpen(true);
         }} 
+        onBlur={handleBlur}
         onFocus={() => setIsOpen(true)} 
         onClick={() => { if(!isOpen) setIsOpen(true); }}
         onKeyDown={handleKeyDown} 
@@ -305,17 +354,51 @@ export const SearchableDropdown = ({
       {isOpen && (
         <div style={{ position: "absolute", zIndex: 100, width: "100%", maxHeight: "250px", overflowY: "auto", background: "white", borderRadius: "8px", border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", marginTop: "4px" }}>
           {filteredOptions.length > 0 ? (
-            filteredOptions.map((opt: any) => (
-              <div 
-                key={opt.id} 
-                onClick={() => handleSelect(opt.id)} 
-                style={{ padding: "10px 15px", cursor: "pointer", borderBottom: "1px solid #f1f5f9", fontSize: "0.9rem" }} 
-                onMouseEnter={(e) => e.currentTarget.style.background = "#f8fafc"} 
-                onMouseLeave={(e) => e.currentTarget.style.background = "white"}
-              >
-                {renderOption ? renderOption(opt) : opt.title}
-              </div>
-            ))
+            filteredOptions.map((opt: any) => {
+              const isSelected = selectedIds.includes(opt.id);
+              return (
+                <div 
+                  key={opt.id} 
+                  onMouseDown={(e) => {
+                      e.preventDefault(); 
+                  }}
+                  style={{ 
+                      padding: "10px 15px", 
+                      cursor: "pointer", 
+                      borderBottom: "1px solid #f1f5f9", 
+                      fontSize: "0.9rem",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      background: isSelected ? "#eff6ff" : "transparent",
+                      fontWeight: isSelected ? "bold" : "normal",
+                      color: isSelected ? "var(--primary)" : "inherit"
+                  }} 
+                  onMouseEnter={(e) => e.currentTarget.style.background = isSelected ? "#eff6ff" : "#f8fafc"} 
+                  onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? "#eff6ff" : "white"}
+                  onClick={() => handleSelect(opt.id)}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
+                      {isSelected && <span>✓</span>}
+                      <span>{renderOption ? renderOption(opt) : opt.title}</span>
+                  </div>
+                  
+                  {onDeleteOption && (
+                      <span 
+                          onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation(); 
+                              onDeleteOption(opt.id);
+                          }}
+                          style={{ color: "#ef4444", fontSize: "1.1rem", paddingLeft: "10px", lineHeight: 1, cursor: "pointer" }}
+                          title="Delete Skill (Global)"
+                      >
+                          🗑️
+                      </span>
+                  )}
+                </div>
+              );
+            })
           ) : (<div style={{ padding: "12px", color: "#64748b", fontSize: "0.9rem", textAlign: "center" }}>{search ? <span>Press <strong>Enter</strong> to create "{search}"</span> : "Type to search..."}</div>)}
         </div>
       )}
@@ -370,25 +453,48 @@ export const SearchableDropdown = ({
 };
 
 // --- COMPONENT: EXPLANATION LIST ---
-export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated }: any) => {
+export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated, onSkillChange, onGlobalSkillRename, onGlobalSkillDelete }: any) => {
   if (!experienceId) return null;
   const selectedExp = experiences.find((e: any) => e.id.toString() === experienceId.toString());
   if (!selectedExp) return null;
   
-  const displaySkills = selectedExp.DemonstratedSkills || [];
+  const displaySkills = useMemo(() => {
+    if (selectedExp.SkillDemonstrations) {
+      return selectedExp.SkillDemonstrations
+        .map((d: any) => {
+           if (!d.Skill) {
+               return { 
+                   id: `orphan-${d.id}`, 
+                   title: "⚠ No Skill Selected", 
+                   isOrphan: true,
+                   demoId: d.id,
+                   ExpSkillDemo: { explanation: d.explanation }
+               };
+           }
+           return {
+               ...d.Skill,
+               demoId: d.id, 
+               ExpSkillDemo: { explanation: d.explanation }
+           };
+        });
+    }
+    return [];
+  }, [selectedExp]);
   
   const [filterRelated, setFilterRelated] = useState(true);
   const [newSkillId, setNewSkillId] = useState<number | null>(null);
   const [newExplanation, setNewExplanation] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [changingSkillDemoId, setChangingSkillDemoId] = useState<number | string | null>(null);
 
-  // Filter skills to display based on the checkbox
   const visibleSkills = filterRelated 
-    ? displaySkills.filter((s: any) => relatedSkillIds && relatedSkillIds.includes(s.id.toString()))
+    ? displaySkills.filter((s: any) => {
+        if (s.isOrphan) return true;
+        return relatedSkillIds && relatedSkillIds.includes(s.id.toString());
+    })
     : displaySkills;
 
-  // Available skills to add (exclude those already in experience)
-  const availableSkills = (allSkills || []).filter((s: any) => !displaySkills.find((es: any) => es.id === s.id));
+  const availableSkills = (allSkills || []).filter((s: any) => !displaySkills.find((es: any) => es.id === s.id && !es.isOrphan));
 
   const handleAddNew = async () => {
     if (!newSkillId || !onAddSkillDemo) return;
@@ -401,10 +507,8 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
 
   return (
     <div style={{ marginTop: "20px" }}> 
-      {/* Title */}
       <label style={{marginBottom: "10px", display: "block"}}>Skill Demonstrations</label>
 
-      {/* Checkbox to filter related skills */}
       <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", cursor: "pointer", marginBottom: "8px", display: "flex", alignItems: "center" }}>
            <input 
              type="checkbox" 
@@ -416,20 +520,114 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
       </label>
 
       <div style={{ display: "grid", gap: "8px" }}>
-        {/* EXISTING ITEMS */}
-        {visibleSkills.map((s: any) => (
-          <div key={s.id} style={{ display: "grid", gridTemplateColumns: "160px 1fr auto", gap: "8px", alignItems: "stretch" }}>
-             {/* Column 1: Title */}
-             <button 
-                type="button" 
-                onMouseDown={(e) => e.preventDefault()} 
-                onClick={(e) => insertTextAtCursor(targetId, s.title, e)} 
-                className="btn-secondary" 
-                style={{ textAlign: "left", whiteSpace: "normal", height: "auto", padding: "8px", fontSize: "0.9rem", fontWeight: "bold", color: "var(--primary)", overflow: "hidden" }}
-                title="Insert Title"
-             >
-                {s.title}
-             </button>
+        {visibleSkills.length > 0 ? visibleSkills.map((s: any) => (
+          <div key={s.id} style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: "8px", alignItems: "stretch" }}>
+             {/* Column 1: Skill Action Group */}
+             <div style={{ height: "100%", position: "relative" }}>
+                 
+                 {changingSkillDemoId === s.demoId ? (
+                     <div style={{ display: "flex", height: "100%", alignItems: "stretch" }}>
+                         {/* 1. Cancel Button (Left) */}
+                         <div 
+                            onClick={() => setChangingSkillDemoId(null)}
+                            style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                width: "30px",
+                                background: "#fef2f2",
+                                // Explicit borders to prevent conflict warnings
+                                borderTop: "1px solid #fee2e2",
+                                borderBottom: "1px solid #fee2e2",
+                                borderLeft: "1px solid #fee2e2",
+                                borderRight: "none",
+                                borderTopLeftRadius: "4px",
+                                borderBottomLeftRadius: "4px",
+                                cursor: "pointer",
+                                color: "var(--danger)",
+                                fontSize: "0.9rem",
+                                transition: "background 0.2s"
+                            }}
+                            title="Cancel Selection"
+                         >
+                            ✕
+                         </div>
+
+                         {/* 2. Dropdown */}
+                         <div style={{ flex: 1 }}>
+                             <SearchableDropdown 
+                                autoFocus={true} 
+                                options={allSkills}
+                                placeholder="Select Skill..."
+                                initialSearch={s.isOrphan ? "" : s.title} 
+                                initialValue={s.isOrphan ? undefined : s.id} 
+                                onSelect={(newId: number) => {
+                                    if (onSkillChange) onSkillChange(s.demoId, newId);
+                                    setChangingSkillDemoId(null);
+                                }}
+                                onCancel={() => setChangingSkillDemoId(null)} 
+                                createEndpoint="/lists/skills"
+                                onOptionCreated={onGlobalSkillCreated}
+                                onDeleteOption={async (id: number) => {
+                                    if(window.confirm("Warning: You are about to delete this skill globally from all experiences and requirements.\n\nAre you sure?")) {
+                                        if (onGlobalSkillDelete) await onGlobalSkillDelete(id);
+                                    }
+                                }}
+                             />
+                         </div>
+                     </div>
+                 ) : (
+                     <div style={{ display: "flex", height: "100%", alignItems: "stretch" }}>
+                         {/* 1. Left Arrow (Toggle Dropdown) */}
+                         <div 
+                             onClick={() => setChangingSkillDemoId(s.demoId)}
+                             style={{
+                                 display: "flex",
+                                 alignItems: "center",
+                                 justifyContent: "center",
+                                 width: "30px",
+                                 background: "rgba(0,0,0,0.03)",
+                                 // Explicit borders
+                                 borderTop: "1px solid #cbd5e1",
+                                 borderBottom: "1px solid #cbd5e1",
+                                 borderLeft: "1px solid #cbd5e1",
+                                 borderRight: "none",
+                                 borderTopLeftRadius: "4px",
+                                 borderBottomLeftRadius: "4px",
+                                 cursor: "pointer",
+                                 color: "var(--text-muted)",
+                                 fontSize: "0.7rem",
+                                 transition: "background 0.2s"
+                             }}
+                             title="Change Associated Skill"
+                             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.08)"}
+                             onMouseLeave={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
+                         >
+                             ▼
+                         </div>
+
+                         {/* 2. Middle & Right (Insert + Edit) */}
+                         <EditableInsertButton 
+                            targetId={targetId}
+                            value={s.title}
+                            onInsert={(e) => insertTextAtCursor(targetId, s.title, e)}
+                            onSave={async (newVal) => {
+                                if (s.isOrphan) return;
+                                if (newVal === s.title) return; 
+                                if (window.confirm(`Warning: You are renaming the skill "${s.title}" to "${newVal}".\n\nThis will update this skill in ALL other experiences and requirements where it is used.\n\nAre you sure?`)) {
+                                    if (onGlobalSkillRename) await onGlobalSkillRename(s.id, newVal);
+                                }
+                            }}
+                            style={{ 
+                                flex: 1, 
+                                borderTopLeftRadius: 0, 
+                                borderBottomLeftRadius: 0,
+                                borderLeft: "1px solid rgba(0,0,0,0.1)" 
+                            }}
+                         />
+                     </div>
+                 )}
+             </div>
 
              {/* Column 2: Explanation */}
              <EditableInsertButton 
@@ -444,7 +642,9 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                  whiteSpace: "normal", 
                  height: "auto", 
                  fontSize: "0.9rem",
-                 color: s.ExpSkillDemo?.explanation ? "inherit" : "#ccc"
+                 color: s.ExpSkillDemo?.explanation ? "inherit" : "#ccc",
+                 border: s.isOrphan ? "1px solid #fc8181" : undefined,
+                 background: s.isOrphan ? "#fff5f5" : undefined
                }}
              />
 
@@ -454,7 +654,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                     type="button" 
                     onClick={() => {
                         if(window.confirm(`Remove "${s.title}" from this experience?`)) {
-                            onDeleteSkillDemo(selectedExp.id, s.id);
+                            onDeleteSkillDemo(selectedExp.id, s.isOrphan ? null : s.id);
                         }
                     }}
                     className="btn-ghost"
@@ -465,11 +665,14 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                  </button>
              )}
           </div>
-        ))}
+        )) : (
+            <div style={{ padding: "10px", textAlign: "center", color: "#999", fontSize: "0.9rem", border: "1px dashed #e2e8f0" }}>
+                {filterRelated ? "No related skills found." : "No skills added to this experience yet."}
+            </div>
+        )}
 
         {/* --- ADD NEW SKILL FORM --- */}
-        <div style={{ display: "grid", gridTemplateColumns: "160px 1fr auto", gap: "8px", alignItems: "stretch" }}>
-             {/* Column 1: Dropdown */}
+        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: "8px", alignItems: "stretch" }}>
              <div style={{ height: "100%" }}>
                 <SearchableDropdown 
                     options={availableSkills}
@@ -487,7 +690,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                 />
              </div>
 
-             {/* Column 2: Input */}
              <input 
                  className="input" 
                  placeholder={newSkillId ? "Enter explanation..." : "Select a skill first"} 
@@ -504,7 +706,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                  onKeyDown={(e) => { if(e.key === "Enter") handleAddNew(); }}
              />
 
-             {/* Column 3: Add Tick */}
              <button 
                 type="button" 
                 onClick={handleAddNew}
@@ -532,7 +733,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   );
 };
 
-// --- HELPER: SYNC FORMIK DIRTY STATE ---
 export const FormObserver = () => {
     const { dirty } = useFormikContext();
     const { setIsDirty } = useFormState();

@@ -23,3 +23,8 @@ server/dist/
 server/build/
 server/.env
 server/config/config.json
+
+# --- Dev Orgaisaton ---
+tasks
+git changes command
+git_changes

@@ -9,11 +9,12 @@ router.get("/", async (req, res) => {
     const list = await Experience.findAll({
       include: [
         {
-          model: Skill,
-          as: "DemonstratedSkills",
-          through: { attributes: ["explanation"] }
+          model: ExpSkillDemo,
+          as: "SkillDemonstrations",
+          include: [{ model: Skill }] 
         }
-      ]
+      ],
+      order: [['createdAt', 'DESC']]
     });
     res.json(list);
   } catch (error) {
@@ -32,11 +33,12 @@ router.post("/", validateToken, async (req, res) => {
     
     if (skillDemonstrations && skillDemonstrations.length > 0) {
       const junctionPromises = skillDemonstrations.map((demo) => {
-        if (!demo.skillId) return null; 
+        if (!demo.skillId && (!demo.explanation || !demo.explanation.trim())) return null;
+        
         return ExpSkillDemo.create({
           ExperienceId: newExp.id,
-          SkillId: demo.skillId,
-          explanation: demo.explanation
+          SkillId: demo.skillId || null,
+          explanation: demo.explanation || ""
         });
       });
       await Promise.all(junctionPromises);
@@ -48,32 +50,18 @@ router.post("/", validateToken, async (req, res) => {
   }
 });
 
-// UPDATE EXPERIENCE (Full)
-router.put("/:id", validateToken, async (req, res) => {
-  const { id } = req.params;
-  const { title, description, location, position, duration, skillDemonstrations } = req.body;
-
+// [NEW] REASSIGN SKILL FOR A DEMO
+// Must come BEFORE "/:id"
+router.put("/demo/:id", validateToken, async (req, res) => {
+  const { id } = req.params; 
+  const { SkillId } = req.body;
+  
   try {
-    await Experience.update(
-      { title, description, location, position, duration },
-      { where: { id: id } }
-    );
+    const demo = await ExpSkillDemo.findByPk(id);
+    if (!demo) return res.status(404).json({ error: "Demonstration not found" });
 
-    if (Array.isArray(skillDemonstrations)) {
-      await ExpSkillDemo.destroy({ where: { ExperienceId: id } });
-      if (skillDemonstrations.length > 0) {
-        const junctionPromises = skillDemonstrations.map((demo) => {
-          if (!demo.skillId) return null;
-          return ExpSkillDemo.create({
-            ExperienceId: id,
-            SkillId: demo.skillId,
-            explanation: demo.explanation
-          });
-        });
-        await Promise.all(junctionPromises);
-      }
-    }
-    res.json({ message: "Updated Successfully" });
+    await demo.update({ SkillId: SkillId || null });
+    res.json(demo);
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -96,7 +84,7 @@ router.put("/:id/demo/:skillId", validateToken, async (req, res) => {
   }
 });
 
-// [NEW] ADD SKILL DEMO TO EXPERIENCE
+// ADD SKILL DEMO TO EXPERIENCE
 router.post("/:id/demo", validateToken, async (req, res) => {
   const { id } = req.params;
   const { skillId, explanation } = req.body;
@@ -110,7 +98,7 @@ router.post("/:id/demo", validateToken, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// [NEW] DELETE SKILL DEMO FROM EXPERIENCE
+// DELETE SKILL DEMO FROM EXPERIENCE
 router.delete("/:id/demo/:skillId", validateToken, async (req, res) => {
   const { id, skillId } = req.params;
   try {
@@ -119,6 +107,39 @@ router.delete("/:id/demo/:skillId", validateToken, async (req, res) => {
     });
     res.json({ message: "Deleted" });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// UPDATE EXPERIENCE (Full)
+router.put("/:id", validateToken, async (req, res) => {
+  const { id } = req.params;
+  const { title, description, location, position, duration, skillDemonstrations } = req.body;
+
+  try {
+    await Experience.update(
+      { title, description, location, position, duration },
+      { where: { id: id } }
+    );
+
+    if (Array.isArray(skillDemonstrations)) {
+      await ExpSkillDemo.destroy({ where: { ExperienceId: id } });
+      
+      if (skillDemonstrations.length > 0) {
+        const junctionPromises = skillDemonstrations.map((demo) => {
+          if (!demo.skillId && (!demo.explanation || !demo.explanation.trim())) return null;
+
+          return ExpSkillDemo.create({
+            ExperienceId: id,
+            SkillId: demo.skillId || null, 
+            explanation: demo.explanation || ""
+          });
+        });
+        await Promise.all(junctionPromises);
+      }
+    }
+    res.json({ message: "Updated Successfully" });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // DELETE

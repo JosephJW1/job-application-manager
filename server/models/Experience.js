@@ -8,7 +8,6 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.TEXT,
       allowNull: false,
     },
-    // --- NEW FIELDS ---
     location: {
       type: DataTypes.STRING,
       allowNull: true, 
@@ -21,10 +20,17 @@ module.exports = (sequelize, DataTypes) => {
       type: DataTypes.STRING,
       allowNull: true,
     },
-    // ------------------
   });
 
   Experience.associate = (models) => {
+    // Direct One-to-Many to access the junction table records directly
+    // This allows us to find demos that have no Skill associated (orphaned explanations)
+    Experience.hasMany(models.ExpSkillDemo, {
+      as: 'SkillDemonstrations',
+      foreignKey: 'ExperienceId'
+    });
+    
+    // Kept for legacy support if needed
     Experience.belongsToMany(models.Skill, { 
       through: models.ExpSkillDemo,
       as: 'DemonstratedSkills' 

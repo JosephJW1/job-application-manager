@@ -7,18 +7,17 @@ module.exports = (sequelize, DataTypes) => {
   });
 
   Skill.associate = (models) => {
-    // 1. Skills belong to Experience Demonstrations
-    Skill.belongsToMany(models.Experience, { through: models.ExpSkillDemo });
+    // We add an explicit alias 'SkillDemos' here
+    Skill.belongsToMany(models.Experience, { 
+      through: models.ExpSkillDemo,
+      as: 'SkillDemos' 
+    });
     
-    // 2. Skills belong to Requirements (New Structure)
-    // A skill can be required by many different requirements
-    Skill.belongsToMany(models.Requirement, { through: "RequirementSkills" });
-
-    // 3. Keep other lists if you have them (like FieldTags/Positions)
-    // Skill.belongsToMany(models.FieldTag, { through: "FieldTagSkills" });
-    // Skill.belongsToMany(models.Position, { through: "PositionSkills" });
-    
-    // REMOVED: Skill.belongsToMany(models.Job, ...)
+    // Skills associated with Requirements
+    Skill.belongsToMany(models.Requirement, { 
+      through: "RequirementSkills",
+      as: 'Requirements'
+    });
   };
 
   return Skill;

@@ -111,14 +111,24 @@ export const CreateExperience = () => {
   };
 
   const handleCreate = () => { setEditingItem(null); setView("form"); };
+  
   const handleEdit = (item: any) => {
+    let mappedDemos = [];
+    if (item.SkillDemonstrations) {
+      mappedDemos = item.SkillDemonstrations.map((demo: any) => ({
+        skillId: demo.SkillId || "", 
+        explanation: demo.explanation || ""
+      }));
+    }
+
     const formattedItem = {
       ...item,
-      skillDemonstrations: item.DemonstratedSkills ? item.DemonstratedSkills.map((s: any) => ({ skillId: s.id, explanation: s.ExpSkillDemo?.explanation || "" })) : []
+      skillDemonstrations: mappedDemos
     };
     setEditingItem(formattedItem);
     setView("form");
   };
+  
   const initialValues = editingItem || { title: "", description: "", location: "", position: "", duration: "", skillDemonstrations: [] };
 
   const handleBack = () => {
@@ -195,17 +205,61 @@ export const CreateExperience = () => {
               <FieldArray name="skillDemonstrations">
                 {({ push, remove }) => (
                   <div>
-                    {values.skillDemonstrations.map((_: any, index: number) => (
-                      <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "10px", alignItems: "start", marginBottom: "10px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px" }}>
-                        <select name={`skillDemonstrations.${index}.skillId`} value={values.skillDemonstrations[index].skillId} onChange={(e) => { if (e.target.value === "ADD_NEW") handleAddNewSkill(index, values); else handleChange(e); }}>
-                          <option value="">Select Skill...</option>
-                          <option value="ADD_NEW" style={{fontWeight:'bold', color:'var(--primary)'}}>+ Add New</option>
-                          {availableSkills.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                        </select>
-                        <Field name={`skillDemonstrations.${index}.explanation`} placeholder="How did you use this skill?" as="textarea" rows={1} />
-                        <button type="button" onClick={() => remove(index)} className="btn-ghost" style={{color: "var(--danger)", padding: "5px"}}>×</button>
-                      </div>
-                    ))}
+                    {values.skillDemonstrations.map((item: any, index: number) => {
+                      // Check for orphan state: No skill ID, but has explanation
+                      const isOrphan = !item.skillId && item.explanation;
+                      
+                      return (
+                        <div 
+                          key={index} 
+                          style={{ 
+                            display: "grid", 
+                            gridTemplateColumns: "1fr 2fr auto", 
+                            gap: "10px", 
+                            alignItems: "start", 
+                            marginBottom: "10px", 
+                            borderBottom: "1px solid #f1f5f9", 
+                            paddingBottom: "10px",
+                            // More noticeable warning style
+                            background: isOrphan ? "#fff5f5" : "transparent",
+                            border: isOrphan ? "2px solid #fc8181" : "none",
+                            padding: isOrphan ? "10px" : "0 0 10px 0",
+                            borderRadius: isOrphan ? "6px" : "0"
+                          }}
+                        >
+                          {isOrphan && (
+                            <div style={{ gridColumn: "1 / -1", color: "#e53e3e", fontSize: "0.9rem", fontWeight: "bold", marginBottom: "5px" }}>
+                              ⚠ This skill was deleted. Please select a replacement to save this explanation.
+                            </div>
+                          )}
+
+                          <select 
+                            name={`skillDemonstrations.${index}.skillId`} 
+                            value={values.skillDemonstrations[index].skillId} 
+                            onChange={(e) => { if (e.target.value === "ADD_NEW") handleAddNewSkill(index, values); else handleChange(e); }}
+                            style={{ 
+                              borderColor: isOrphan ? "#fc8181" : "#ccc",
+                            }}
+                          >
+                            <option value="">{isOrphan ? "Select Replacement..." : "Select Skill..."}</option>
+                            <option value="ADD_NEW" style={{fontWeight:'bold', color:'var(--primary)'}}>+ Add New</option>
+                            {availableSkills.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
+                          </select>
+                          
+                          <Field 
+                            name={`skillDemonstrations.${index}.explanation`} 
+                            placeholder="How did you use this skill?" 
+                            as="textarea" 
+                            rows={1}
+                            style={{ 
+                                borderColor: isOrphan ? "#fc8181" : "#ccc"
+                            }}
+                          />
+                          
+                          <button type="button" onClick={() => remove(index)} className="btn-ghost" style={{color: "var(--danger)", padding: "5px", marginTop: "5px"}}>×</button>
+                        </div>
+                      );
+                    })}
                     <button type="button" onClick={() => push({ skillId: "", explanation: "" })} className="btn-secondary" style={{width: "100%", marginTop: "10px"}}>+ Add Skill Link</button>
                   </div>
                 )}

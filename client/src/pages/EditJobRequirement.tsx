@@ -6,43 +6,6 @@ import { useFormState } from "../context/FormStateContext";
 import { SearchableDropdown, ExplanationList, FormObserver, insertTextAtCursor, EditableInsertButton } from "./JobFormComponents";
 import type { Skill, Experience } from "../types";
 
-const RequirementSwitcher = ({ 
-  currentIdx, 
-  reqs, 
-  onSwitch, 
-  isDirty 
-}: { currentIdx: number, reqs: any[], onSwitch: (idx: number) => void, isDirty: boolean }) => {
-  
-  const handleSwitch = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newIndex = parseInt(e.target.value);
-    if (newIndex === currentIdx) return;
-
-    if (isDirty) {
-      if (!window.confirm("You have unsaved changes in this requirement. Switching will discard them. Continue?")) {
-        return; 
-      }
-    }
-    onSwitch(newIndex);
-  };
-
-  return (
-    <div style={{ marginBottom: "20px", background: "white", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-      <label style={{marginBottom: "5px"}}>Switch Requirement</label>
-      <select 
-        value={currentIdx} 
-        onChange={handleSwitch}
-        style={{ width: "100%", fontWeight: "bold", fontSize: "1rem" }}
-      >
-        {reqs.map((req, idx) => (
-          <option key={idx} value={idx}>
-            {idx + 1}. {req.description ? (req.description.length > 60 ? req.description.substring(0,60)+"..." : req.description) : "(No Description)"}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-};
-
 export const EditJobRequirement = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -54,7 +17,9 @@ export const EditJobRequirement = () => {
   const [experiences, setExperiences] = useState<Experience[]>([]);
   const [activeMatchIndices, setActiveMatchIndices] = useState<{[key: number]: number}>({});
   
-  // UPDATED: Default to true
+  // State to toggle description edit mode
+  const [isEditingDesc, setIsEditingDesc] = useState(false);
+
   const [filterByRelatedSkills, setFilterByRelatedSkills] = useState(true);
   const [filterByAllSkills, setFilterByAllSkills] = useState(false); 
 
@@ -89,6 +54,16 @@ export const EditJobRequirement = () => {
   const getExpTitle = (id: string | number) => experiences.find(e => e.id.toString() === id?.toString())?.title || "-";
   
   const getFullExp = (id: string | number) => experiences.find(e => e.id.toString() === id?.toString());
+
+  // --- HELPER: Normalize Skills from Experience ---
+  const getExpSkills = (exp: any) => {
+    if (exp.SkillDemonstrations) {
+        return exp.SkillDemonstrations
+            .map((d: any) => d.Skill || { id: "orphan", title: "⚠ No Skill", isOrphan: true })
+            .filter((s: any) => s != null);
+    }
+    return [];
+  };
 
   // --- LOGIC: CREATE TEMP EXPERIENCE ---
   const handleCreateTempExperience = (title: string, setFieldValue: any, currentMatches: any[]) => {
@@ -130,29 +105,30 @@ export const EditJobRequirement = () => {
     } catch (e: any) { console.error(e); throw e; }
   };
 
-  const updateSkillDemonstration = async (expId: number, skillId: number, newExplanation: string) => {
-    if (expId < 0) {
-        setExperiences(prev => prev.map(e => {
-            if(e.id !== expId) return e;
-            const newSkills = (e.DemonstratedSkills || []).map((s: any) => 
-                s.id === skillId ? { ...s, ExpSkillDemo: { ...s.ExpSkillDemo, explanation: newExplanation } } : s
-            );
-            return { ...e, DemonstratedSkills: newSkills };
-        }));
-        return;
+  const deleteGlobalSkill = async (id: number) => {
+    try {
+        await api.delete(`/lists/skills/${id}`);
+        await fetchLists();
+    } catch (e: any) {
+        alert("Error deleting skill: " + (e.response?.data?.error || e.message));
     }
+  };
+
+  const updateSkillDemonstration = async (expId: number, skillId: number, newExplanation: string) => {
+    if (expId < 0) return;
     try {
         await api.put(`/experiences/${expId}/demo/${skillId}`, { explanation: newExplanation });
-        setExperiences(prev => prev.map(e => {
-            if(e.id !== expId || !e.DemonstratedSkills) return e;
-            return {
-                ...e,
-                DemonstratedSkills: e.DemonstratedSkills.map((s: any) => 
-                    s.id === skillId ? { ...s, ExpSkillDemo: { ...s.ExpSkillDemo, explanation: newExplanation } } : s
-                )
-            };
-        }));
+        fetchLists();
     } catch (e: any) { console.error(e); throw e; }
+  };
+  
+  const handleSkillReassign = async (demoId: number, newSkillId: number) => {
+      try {
+          await api.put(`/experiences/demo/${demoId}`, { SkillId: newSkillId });
+          fetchLists(); 
+      } catch (e: any) {
+          alert("Error reassigning skill: " + e.message);
+      }
   };
 
   const handleAddSkillDemonstration = async (expId: number, skillId: number, explanation: string) => {
@@ -176,17 +152,13 @@ export const EditJobRequirement = () => {
     } catch (e: any) { alert("Error adding skill: " + e.message); }
   };
 
-  const handleDeleteSkillDemonstration = async (expId: number, skillId: number) => {
-    if (expId < 0) {
-        setExperiences(prev => prev.map(e => {
-            if(e.id !== expId) return e;
-            return {
-                ...e,
-                DemonstratedSkills: (e.DemonstratedSkills || []).filter((s: any) => s.id !== skillId)
-            };
-        }));
+  const handleDeleteSkillDemonstration = async (expId: number, skillId: number | null) => {
+    if (!skillId) {
+        alert("Cannot delete orphan via this button (requires skill ID). Use the edit page to clean up if needed.");
         return;
     }
+
+    if (expId < 0) return;
 
     try {
         await api.delete(`/experiences/${expId}/demo/${skillId}`);
@@ -252,9 +224,17 @@ export const EditJobRequirement = () => {
     navigate("/add-job", { state: { returnFromReq: true } });
   };
 
-  const handleSwitchReq = (newIndex: number) => {
+  const handleSwitchReq = (newIndex: number, isDirty: boolean, resetForm: any) => {
+     if (newIndex === activeReqIndex) return;
+     if (isDirty) {
+        if (!window.confirm("You have unsaved changes. Switch without saving?")) {
+            return;
+        }
+        resetForm(); 
+     }
      setActiveReqIndex(newIndex);
      setIsDirty(false); 
+     setIsEditingDesc(false);
   };
 
   if (!jobDraft) return <div className="page-container">Loading...</div>;
@@ -308,7 +288,7 @@ export const EditJobRequirement = () => {
                 }
            };
 
-           // --- REMOVE HANDLER (NEW) ---
+           // --- REMOVE HANDLER ---
            const handleRemoveMatch = (match: any, index: number) => {
                 const isTemp = match.experienceId < 0;
                 const hasExplanation = match.matchExplanation && match.matchExplanation.trim().length > 0;
@@ -316,7 +296,6 @@ export const EditJobRequirement = () => {
                 let shouldWarn = false;
 
                 if (isTemp) {
-                    // If it is a newly added temp experience, check if it has any user-entered details
                     const exp = experiences.find(e => e.id === match.experienceId);
                     if (exp) {
                         const hasDetails = 
@@ -324,12 +303,11 @@ export const EditJobRequirement = () => {
                             (exp.position && exp.position.trim().length > 0) ||
                             (exp.location && exp.location.trim().length > 0) ||
                             (exp.duration && exp.duration.trim().length > 0) ||
-                            (exp.DemonstratedSkills && exp.DemonstratedSkills.length > 0);
+                            (getExpSkills(exp).length > 0);
                         
                         if (hasDetails || hasExplanation) shouldWarn = true;
                     }
                 } else {
-                    // Existing experience: Warn if user typed a match explanation that would be lost
                     if (hasExplanation) shouldWarn = true;
                 }
 
@@ -345,13 +323,39 @@ export const EditJobRequirement = () => {
                 setActiveMatchIndices(prev => ({...prev, [reqIndex]: 0}));
            };
 
-           // --- FILTER LOGIC (UPDATED) ---
+           // --- ADD/DELETE REQ HANDLERS ---
+           const handleAddReq = () => {
+               const newReq = { description: "", skillIds: [], matches: [] };
+               const newReqs = [...values.requirements, newReq];
+               setFieldValue("requirements", newReqs);
+               setActiveReqIndex(newReqs.length - 1);
+               setIsEditingDesc(true); // Auto-enter edit mode for new item
+           };
+
+           const handleDeleteReq = () => {
+               if (!window.confirm("Are you sure you want to delete this requirement?")) return;
+               const newReqs = values.requirements.filter((_: any, i: number) => i !== reqIndex);
+               
+               if (newReqs.length === 0) {
+                   // Ensure at least one exists
+                   newReqs.push({ description: "", skillIds: [], matches: [] });
+               }
+               
+               setFieldValue("requirements", newReqs);
+               // Adjust active index
+               if (reqIndex >= newReqs.length) {
+                   setActiveReqIndex(newReqs.length - 1);
+               }
+           };
+
+           // --- FILTER LOGIC ---
            const reqSkillIds = (currentReq.skillIds || []).map((id: any) => id.toString());
 
            const filteredExperiences = experiences.filter(exp => {
                 if (reqSkillIds.length === 0) return true;
 
-                const expSkillIds = (exp.DemonstratedSkills || []).map((s: any) => s.id.toString());
+                const expSkills = getExpSkills(exp);
+                const expSkillIds = expSkills.map((s: any) => s.id && s.id.toString());
                 
                 if (filterByAllSkills) {
                      return reqSkillIds.every((reqId: string) => expSkillIds.includes(reqId));
@@ -368,29 +372,110 @@ export const EditJobRequirement = () => {
             <Form>
               <FormObserver />
               
-              <RequirementSwitcher 
-                currentIdx={reqIndex} 
-                reqs={values.requirements} 
-                onSwitch={(idx) => { 
-                    handleSwitchReq(idx); 
-                    resetForm({ values: values }); 
-                }} 
-                isDirty={dirty} 
-              />
-
               <div className="card edit-mode-container" style={{background: "#f8fafc", borderColor: "var(--primary)"}}>
-                  <div style={{display: "flex", justifyContent: "space-between", marginBottom: "15px", alignItems: "center"}}>
-                      <h4 style={{margin:0, color: "var(--primary)"}}>Requirement Details</h4>
-                  </div>
                   
-                  <label>Requirement Description <span style={{color:'var(--danger)'}}>*</span></label>
-                  <Field 
-                    name={`requirements.${reqIndex}.description`} 
-                    required 
-                    as="textarea" 
-                    rows={2} 
-                    style={{ resize: "vertical" }}
-                  />
+                  {/* UNIFIED NAV/EDIT/HEADER BAR */}
+                  <div style={{
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: "10px", 
+                      marginBottom: "15px", 
+                      borderBottom: "1px solid #e2e8f0", 
+                      paddingBottom: "10px"
+                  }}>
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+                          <label style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "2px" }}>
+                              Requirement {reqIndex + 1} of {values.requirements.length}
+                          </label>
+                          
+                          {isEditingDesc ? (
+                              <div style={{ display: "flex", gap: "5px" }}>
+                                  <Field 
+                                    name={`requirements.${reqIndex}.description`} 
+                                    type="text" 
+                                    autoFocus
+                                    placeholder="Enter Requirement Description..."
+                                    style={{ 
+                                        height: "38px", 
+                                        width: "100%", 
+                                        marginBottom: 0 
+                                    }}
+                                    onKeyDown={(e: React.KeyboardEvent) => {
+                                        if (e.key === "Enter") {
+                                            e.preventDefault();
+                                            setIsEditingDesc(false);
+                                        }
+                                    }}
+                                  />
+                                  <button 
+                                    type="button" 
+                                    className="btn-primary"
+                                    onClick={() => setIsEditingDesc(false)}
+                                    title="Done Editing"
+                                    style={{ padding: "0 12px" }}
+                                  >
+                                    ✓
+                                  </button>
+                              </div>
+                          ) : (
+                              <select 
+                                value={reqIndex} 
+                                onChange={(e) => handleSwitchReq(parseInt(e.target.value), dirty, resetForm)}
+                                style={{ 
+                                    width: "100%", 
+                                    fontWeight: "bold", 
+                                    fontSize: "1rem", 
+                                    marginBottom: 0,
+                                    cursor: "pointer", 
+                                    border: "1px solid transparent",
+                                    background: "transparent",
+                                    paddingLeft: 0
+                                }}
+                                className="req-switcher-select"
+                              >
+                                {values.requirements.map((req: any, idx: number) => (
+                                  <option key={idx} value={idx}>
+                                    {idx + 1}. {req.description ? (req.description.length > 80 ? req.description.substring(0,80)+"..." : req.description) : "(No Description)"}
+                                  </option>
+                                ))}
+                              </select>
+                          )}
+                      </div>
+
+                      {/* ACTIONS */}
+                      {!isEditingDesc && (
+                          <button 
+                            type="button" 
+                            className="btn-secondary" 
+                            onClick={() => setIsEditingDesc(true)}
+                            title="Edit Description"
+                            style={{ padding: "8px 12px" }}
+                          >
+                            ✎
+                          </button>
+                      )}
+                      
+                      <button 
+                        type="button" 
+                        className="btn-secondary" 
+                        onClick={handleAddReq}
+                        title="Add New Requirement"
+                        style={{ padding: "8px 12px" }}
+                      >
+                        +
+                      </button>
+                      
+                      <button 
+                        type="button" 
+                        className="btn-ghost" 
+                        style={{ color: "var(--danger)", padding: "8px 12px" }}
+                        onClick={handleDeleteReq}
+                        title="Delete Requirement"
+                        disabled={values.requirements.length <= 1} 
+                      >
+                        🗑️
+                      </button>
+                  </div>
                   
                   <SearchableDropdown 
                     label="Related Skills" 
@@ -411,16 +496,25 @@ export const EditJobRequirement = () => {
                           options={filteredExperiences} 
                           onCreate={(title: string) => handleCreateTempExperience(title, setFieldValue, currentReq.matches || [])}
                           
-                          renderOption={(exp: any) => (
-                             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", overflow: "hidden" }}>
-                                <span style={{ fontWeight: 500, marginRight: "10px" }}>{exp.title}</span>
-                                {exp.DemonstratedSkills && exp.DemonstratedSkills.length > 0 && (
-                                    <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "60%" }}>
-                                        ({exp.DemonstratedSkills.map((s: any) => s.title).join(", ")})
-                                    </span>
-                                )}
-                             </div>
-                          )}
+                          renderOption={(exp: any) => {
+                             const allExpSkills = getExpSkills(exp);
+                             let displayedSkills = allExpSkills;
+
+                             if (filterByRelatedSkills && reqSkillIds.length > 0) {
+                                displayedSkills = allExpSkills.filter((s: any) => s.isOrphan || reqSkillIds.includes(s.id.toString()));
+                             }
+
+                             return (
+                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", overflow: "hidden" }}>
+                                    <span style={{ fontWeight: 500, marginRight: "10px" }}>{exp.title}</span>
+                                    {displayedSkills.length > 0 && (
+                                        <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "60%" }}>
+                                            ({displayedSkills.map((s: any) => s.title).join(", ")})
+                                        </span>
+                                    )}
+                                 </div>
+                             );
+                          }}
 
                           headerContent={
                             <div style={{ display: "flex", gap: "15px", alignItems: "center", marginBottom: 0 }}>
@@ -761,11 +855,14 @@ export const EditJobRequirement = () => {
                                               experienceId={matchData.experienceId} 
                                               experiences={experiences} 
                                               allSkills={skills} 
-                                              relatedSkillIds={reqSkillIds} // UPDATED: Passed prop
+                                              relatedSkillIds={reqSkillIds} 
                                               onSkillDemoUpdate={updateSkillDemonstration}
                                               onAddSkillDemo={handleAddSkillDemonstration} 
                                               onDeleteSkillDemo={handleDeleteSkillDemonstration}
                                               onGlobalSkillCreated={refreshSkills}
+                                              onSkillChange={handleSkillReassign} 
+                                              onGlobalSkillRename={updateSkill}
+                                              onGlobalSkillDelete={deleteGlobalSkill}
                                           />
                                       </>
                                   );
