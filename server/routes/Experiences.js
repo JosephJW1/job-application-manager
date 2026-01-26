@@ -60,9 +60,28 @@ router.put("/demo/:id", validateToken, async (req, res) => {
     const demo = await ExpSkillDemo.findByPk(id);
     if (!demo) return res.status(404).json({ error: "Demonstration not found" });
 
+    // Check for duplicates in the same experience
+    if (SkillId) {
+      const duplicate = await ExpSkillDemo.findOne({
+        where: {
+          ExperienceId: demo.ExperienceId,
+          SkillId: SkillId
+        }
+      });
+
+      // If a record exists with this Skill and Experience, and it's not the one we are currently editing
+      if (duplicate && duplicate.id !== demo.id) {
+        return res.status(409).json({ error: "This skill is already listed for this experience. Please edit the existing entry instead." });
+      }
+    }
+
     await demo.update({ SkillId: SkillId || null });
     res.json(demo);
   } catch (error) {
+    // Unique Constraint errors usually come here if not caught above
+    if (error.name === 'SequelizeUniqueConstraintError') {
+       return res.status(409).json({ error: "This skill is already listed for this experience." });
+    }
     res.status(500).json({ error: error.message });
   }
 });

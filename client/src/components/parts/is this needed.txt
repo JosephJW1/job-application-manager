@@ -1,0 +1,1 @@
+is it a good or bad idea to have smaller comonents that the components are made up of like buttons to edit/delete, text field, etc.

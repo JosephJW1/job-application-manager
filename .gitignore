@@ -25,6 +25,6 @@ server/.env
 server/config/config.json
 
 # --- Dev Orgaisaton ---
-tasks
-git changes command
-git_changes
+tasks/
+./git_changes_command
+./git_changes

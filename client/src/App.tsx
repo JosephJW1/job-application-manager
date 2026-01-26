@@ -41,11 +41,11 @@ const Navbar = () => {
   
     return (
       <nav className="nav-bar">
-        <div style={{ fontSize: "1.2rem", fontWeight: "bold", color: "var(--primary)" }}>
-          Job<span style={{color: "var(--text-main)"}}>Tracker</span>
-        </div>
+        <Link to="/" style={{ fontSize: "1.2rem", fontWeight: "bold", color: "var(--primary)" }}>
+          Cov<span style={{color: "var(--text-main)"}}>Lette</span>
+        </Link>
         <div className="nav-links">
-          <a href="/" onClick={(e) => handleNavClick(e, "/")} className="nav-link">Home</a>
+          <a href="/add-job" onClick={(e) => handleNavClick(e, "/")} className="nav-link">Jobs</a>
           {!authState.status ? (
             <>
               <Link to="/login" className="nav-link">Login</Link>
@@ -53,7 +53,6 @@ const Navbar = () => {
             </>
           ) : (
             <>
-              <a href="/add-job" onClick={(e) => handleNavClick(e, "/add-job")} className="nav-link">Jobs</a>
               <a href="/add-experience" onClick={(e) => handleNavClick(e, "/add-experience")} className="nav-link">Experience</a>
               <a href="/add-skill" onClick={(e) => handleNavClick(e, "/add-skill")} className="nav-link">Skills</a>
               <a href="/add-job-tags" onClick={(e) => handleNavClick(e, "/add-job-tags")} className="nav-link">Tags</a>
@@ -76,7 +75,7 @@ function App() {
         <Router>
           <Navbar />
           <Routes>
-            <Route path="/" element={<h1>Job Manager</h1>} />
+            <Route path="/" element={<CreateJob />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             
@@ -101,7 +100,6 @@ function App() {
             />
 
             <Route path="/add-experience" element={<CreateExperience />} />
-            <Route path="/add-job" element={<CreateJob />} />
             
             {/* NEW ROUTE */}
             <Route path="/edit-requirement" element={<EditJobRequirement />} />
