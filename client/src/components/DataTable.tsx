@@ -115,7 +115,7 @@ export const DataTable = <T extends { id: number }>({
             </tr>
             
             {/* Search Filters Row */}
-            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+            <tr style={{ background: 'var(--bg-input)', borderBottom: '1px solid var(--border-color)' }}>
               <th></th>
               {columns.map(col => (
                 <th key={`filter-${col.key}`} style={{ padding: '5px 10px' }}>
@@ -128,7 +128,7 @@ export const DataTable = <T extends { id: number }>({
                         width: '100%', 
                         fontSize: '0.85rem', 
                         padding: '4px 8px', 
-                        border: '1px solid #cbd5e1', 
+                        border: '1px solid var(--border-color)', 
                         borderRadius: '4px', 
                         fontWeight: 'normal',
                         marginBottom: 0
@@ -152,9 +152,9 @@ export const DataTable = <T extends { id: number }>({
                   <tr 
                     key={item.id} 
                     onClick={() => onRowClick && onRowClick(item)} 
+                    className={selectedIds.includes(item.id) ? 'selected' : ''}
                     style={{ 
-                        cursor: onRowClick ? 'pointer' : 'default', 
-                        background: selectedIds.includes(item.id) ? '#eff6ff' : undefined,
+                        cursor: onRowClick ? 'pointer' : 'default',
                         transition: 'background 0.2s' 
                     }}
                   >

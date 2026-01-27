@@ -1,38 +1,50 @@
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
 import { AuthProvider, AuthContext } from "./context/AuthContext";
 import { FormStateProvider, useFormState } from "./context/FormStateContext"; 
-import { useContext } from "react";
+import { useContext, useEffect, useState } from "react"; // Added useEffect, useState
 import { Login } from "./pages/Login";
 import { Register } from "./pages/Register";
 import { CreateSimple } from "./pages/CreateSimple";
 import { CreateExperience } from "./pages/CreateExperience";
 import { CreateJob } from "./pages/CreateJob";
-import { EditJobRequirement } from "./pages/EditJobRequirement"; // IMPORT NEW PAGE
+import { EditJobRequirement } from "./pages/EditJobRequirement";
 
-// ... [Navbar component stays exactly the same] ...
-// (I am omitting the Navbar code here for brevity as it remains unchanged)
+// ... [Imports remain the same] ...
 
 const Navbar = () => {
     const { authState, logout } = useContext(AuthContext);
-    const { isDirty, setIsDirty } = useFormState(); // USE CONTEXT
+    const { isDirty, setIsDirty } = useFormState();
     const navigate = useNavigate();
     const location = useLocation();
+
+    // --- Dark Mode Logic ---
+    // Initialize state from localStorage or default to 'light'
+    const [theme, setTheme] = useState(() => localStorage.getItem('theme') || 'light');
+
+    useEffect(() => {
+        // Apply the theme to the HTML root element
+        document.documentElement.setAttribute('data-theme', theme);
+        // Persist to local storage
+        localStorage.setItem('theme', theme);
+    }, [theme]);
+
+    const toggleTheme = () => {
+        setTheme((prevTheme) => (prevTheme === 'light' ? 'dark' : 'light'));
+    };
+    // -----------------------
   
     // Custom Navigation Handler
     const handleNavClick = (e: React.MouseEvent, path: string) => {
       e.preventDefault();
   
-      // 1. Warn if unsaved changes
       if (isDirty) {
         if (!window.confirm("You have unsaved changes. Are you sure you want to leave?")) {
           return;
         }
-        setIsDirty(false); // Reset dirty state if user accepts
+        setIsDirty(false); 
       }
   
-      // 2. Logic for "Return to List" if on same page
       if (location.pathname === path) {
-        // Pass a timestamp or flag to force an effect in the component
         navigate(path, { state: { resetView: Date.now() } });
       } else {
         navigate(path);
@@ -45,6 +57,7 @@ const Navbar = () => {
           Cov<span style={{color: "var(--text-main)"}}>Lette</span>
         </Link>
         <div className="nav-links">
+
           <a href="/add-job" onClick={(e) => handleNavClick(e, "/")} className="nav-link">Jobs</a>
           {!authState.status ? (
             <>
@@ -63,11 +76,22 @@ const Navbar = () => {
               }} className="btn-secondary" style={{padding: "0.4rem 1rem"}}>Logout</button>
             </>
           )}
+          
+          {/* --- Theme Toggle Switch --- */}
+          <label className="toggle-switch" title="Toggle Dark Mode">
+            <input 
+                type="checkbox" 
+                checked={theme === 'dark'} 
+                onChange={toggleTheme} 
+            />
+            <span className="toggle-slider"></span>
+          </label>
         </div>
       </nav>
     );
   };
 
+// ... [Rest of App component stays the same] ...
 function App() {
   return (
     <AuthProvider>
@@ -100,8 +124,6 @@ function App() {
             />
 
             <Route path="/add-experience" element={<CreateExperience />} />
-            
-            {/* NEW ROUTE */}
             <Route path="/edit-requirement" element={<EditJobRequirement />} />
 
           </Routes>

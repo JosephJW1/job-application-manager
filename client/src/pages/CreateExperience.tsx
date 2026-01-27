@@ -160,7 +160,8 @@ export const CreateExperience = () => {
   const expColumns: Column<any>[] = [
       { key: "title", header: "Title", render: (exp) => <strong>{exp.title}</strong> },
       { key: "position", header: "Position", render: (exp) => exp.position || "-" },
-      { key: "description", header: "Description", render: (exp) => exp.description.length > 60 ? exp.description.substring(0, 60) + "..." : exp.description }
+      // UPDATED: Changed from Description to Location
+      { key: "location", header: "Location", render: (exp) => exp.location || "-" }
   ];
 
   if (view === "list") {
@@ -195,7 +196,7 @@ export const CreateExperience = () => {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "10px" }}>
                   <div>
                     <label>Title / Project <span style={{color:'var(--danger)'}}>*</span></label>
-                    <Field name="title" required placeholder="e.g. Project Alpha" />
+                    <Field name="title" required placeholder="e.g. Project Alpha" autoFocus />
                   </div>
                   <div>
                     <label>Position / Role</label>

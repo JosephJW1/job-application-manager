@@ -149,7 +149,11 @@ export const CreateJob = () => {
               <DraftRestorer />
               
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-                <div><label>Job Title <span style={{color:'var(--danger)'}}>*</span></label><Field name="title" required /></div>
+                <div>
+                    <label>Job Title <span style={{color:'var(--danger)'}}>*</span></label>
+                    {/* Added autoFocus here */}
+                    <Field name="title" required autoFocus />
+                </div>
                 <div><label>Company</label><Field name="company" placeholder="e.g. Acme Corp" /></div>
               </div>
               <SearchableDropdown label="Job Tags" name="jobTagIds" options={jobTags} multiple={true} createEndpoint="/lists/jobtags" onOptionCreated={refreshTags} />
