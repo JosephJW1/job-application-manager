@@ -3,7 +3,8 @@ import { Formik, Form, Field } from "formik";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../api";
 import { useFormState } from "../context/FormStateContext";
-import { SearchableDropdown, ExplanationList, FormObserver, insertTextAtCursor, EditableInsertButton } from "./JobFormComponents";
+import { SearchableDropdown, ExplanationList, FormObserver } from "./JobFormComponents";
+import { insertTextAtCursor, EditableText } from "../components/EditableText";
 import type { Skill, Experience } from "../types";
 
 export const EditJobRequirement = () => {
@@ -17,9 +18,7 @@ export const EditJobRequirement = () => {
   const [experiences, setExperiences] = useState<Experience[]>([]);
   const [activeMatchIndices, setActiveMatchIndices] = useState<{[key: number]: number}>({});
   
-  // State to toggle description edit mode
   const [isEditingDesc, setIsEditingDesc] = useState(false);
-
   const [filterByRelatedSkills, setFilterByRelatedSkills] = useState(true);
   const [filterByAllSkills, setFilterByAllSkills] = useState(false); 
 
@@ -52,10 +51,8 @@ export const EditJobRequirement = () => {
 
   const refreshSkills = (newItem: Skill) => setSkills(prev => [...prev, newItem]);
   const getExpTitle = (id: string | number) => experiences.find(e => e.id.toString() === id?.toString())?.title || "-";
-  
   const getFullExp = (id: string | number) => experiences.find(e => e.id.toString() === id?.toString());
 
-  // --- HELPER: Normalize Skills from Experience ---
   const getExpSkills = (exp: any) => {
     if (exp.SkillDemonstrations) {
         return exp.SkillDemonstrations
@@ -65,7 +62,6 @@ export const EditJobRequirement = () => {
     return [];
   };
 
-  // --- LOGIC: CREATE TEMP EXPERIENCE ---
   const handleCreateTempExperience = (title: string, setFieldValue: any, currentMatches: any[]) => {
     const tempId = -Date.now(); 
     const newExp: Experience = { 
@@ -86,7 +82,7 @@ export const EditJobRequirement = () => {
     setActiveMatchIndices(prev => ({...prev, [activeReqIndex]: currentMatches.length}));
   };
 
-  // --- API UPDATERS ---
+  // --- ACTIONS ---
   const updateExperience = async (id: number, field: string, value: string) => {
     if (id < 0) {
         setExperiences(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
@@ -113,6 +109,25 @@ export const EditJobRequirement = () => {
         alert("Error deleting skill: " + (e.response?.data?.error || e.message));
     }
   };
+  
+  const handleOpenExperience = (id: number, currentValues: any) => {
+      sessionStorage.setItem("job_form_draft", JSON.stringify(currentValues));
+      navigate("/add-experience", { 
+          state: { 
+              newId: id,
+              returnPath: "/edit-requirement",
+              targetField: "experience_edit_mode" 
+          } 
+      });
+  };
+
+  const handleDeleteExperience = async (id: number) => {
+      if (!window.confirm("Are you sure you want to delete this Experience permanently from the database?")) return;
+      try {
+          await api.delete(`/experiences/${id}`);
+          await fetchLists();
+      } catch (e: any) { alert("Error: " + e.message); }
+  };
 
   const updateSkillDemonstration = async (expId: number, skillId: number, newExplanation: string) => {
     if (expId < 0) return;
@@ -126,9 +141,7 @@ export const EditJobRequirement = () => {
       try {
           await api.put(`/experiences/demo/${demoId}`, { SkillId: newSkillId });
           fetchLists(); 
-      } catch (e: any) {
-          alert("Error reassigning skill: " + e.message);
-      }
+      } catch (e: any) { alert("Error reassigning skill: " + e.message); }
   };
 
   const handleAddSkillDemonstration = async (expId: number, skillId: number, explanation: string) => {
@@ -145,7 +158,6 @@ export const EditJobRequirement = () => {
         }));
         return;
     }
-
     try {
         await api.post(`/experiences/${expId}/demo`, { skillId, explanation });
         await fetchLists();
@@ -153,13 +165,8 @@ export const EditJobRequirement = () => {
   };
 
   const handleDeleteSkillDemonstration = async (expId: number, skillId: number | null) => {
-    if (!skillId) {
-        alert("Cannot delete orphan via this button (requires skill ID). Use the edit page to clean up if needed.");
-        return;
-    }
-
+    if (!skillId) { alert("Cannot delete orphan via this button."); return; }
     if (expId < 0) return;
-
     try {
         await api.delete(`/experiences/${expId}/demo/${skillId}`);
         await fetchLists();
@@ -218,18 +225,14 @@ export const EditJobRequirement = () => {
   };
 
   const handleReturn = (isDirty: boolean) => {
-    if (isDirty) {
-      if(!window.confirm("You have unsaved changes. Return without saving?")) return;
-    }
+    if (isDirty && !window.confirm("You have unsaved changes. Return without saving?")) return;
     navigate("/add-job", { state: { returnFromReq: true } });
   };
 
   const handleSwitchReq = (newIndex: number, isDirty: boolean, resetForm: any) => {
      if (newIndex === activeReqIndex) return;
      if (isDirty) {
-        if (!window.confirm("You have unsaved changes. Switch without saving?")) {
-            return;
-        }
+        if (!window.confirm("You have unsaved changes. Switch without saving?")) return;
         resetForm(); 
      }
      setActiveReqIndex(newIndex);
@@ -246,135 +249,40 @@ export const EditJobRequirement = () => {
          <button onClick={() => handleReturn(false)} className="btn-ghost">Back</button>
       </div>
 
-      <Formik 
-        initialValues={jobDraft} 
-        enableReinitialize 
-        onSubmit={handleSave}
-      >
+      <Formik initialValues={jobDraft} enableReinitialize onSubmit={handleSave}>
         {({ values, setFieldValue, dirty, submitForm, resetForm }) => {
            const reqIndex = activeReqIndex;
            const currentReq = values.requirements[reqIndex];
-           
            if (!currentReq) return <div>Error: Requirement not found</div>;
-
-           const handleSaveTempExperience = async (tempId: number) => {
-                const tempExp = experiences.find(e => e.id === tempId);
-                if (!tempExp) return;
-
-                try {
-                    const { id, DemonstratedSkills, ...payload } = tempExp;
-                    const skillPayload = DemonstratedSkills?.map((s: any) => ({
-                        skillId: s.id,
-                        explanation: s.ExpSkillDemo?.explanation || ""
-                    })) || [];
-
-                    const res = await api.post("/experiences", { ...payload, skillDemonstrations: skillPayload });
-                    const newId = res.data.id;
-                    const savedExp = res.data; 
-
-                    setExperiences(prev => prev.map(e => e.id === tempId ? savedExp : e));
-
-                    const newRequirements = values.requirements.map((r: any) => ({
-                        ...r,
-                        matches: r.matches?.map((m: any) => ({
-                            ...m,
-                            experienceId: m.experienceId === tempId ? newId : m.experienceId
-                        }))
-                    }));
-                    setFieldValue("requirements", newRequirements);
-
-                } catch (e: any) {
-                    alert("Error saving experience: " + e.message);
-                }
-           };
-
-           // --- REMOVE HANDLER ---
-           const handleRemoveMatch = (match: any, index: number) => {
-                const isTemp = match.experienceId < 0;
-                const hasExplanation = match.matchExplanation && match.matchExplanation.trim().length > 0;
-                
-                let shouldWarn = false;
-
-                if (isTemp) {
-                    const exp = experiences.find(e => e.id === match.experienceId);
-                    if (exp) {
-                        const hasDetails = 
-                            (exp.description && exp.description.trim().length > 0) ||
-                            (exp.position && exp.position.trim().length > 0) ||
-                            (exp.location && exp.location.trim().length > 0) ||
-                            (exp.duration && exp.duration.trim().length > 0) ||
-                            (getExpSkills(exp).length > 0);
-                        
-                        if (hasDetails || hasExplanation) shouldWarn = true;
-                    }
-                } else {
-                    if (hasExplanation) shouldWarn = true;
-                }
-
-                if (shouldWarn) {
-                    if (!window.confirm("You have entered details for this match. Removing it will discard them. Continue?")) {
-                        return;
-                    }
-                }
-
-                const newMatches = [...currentReq.matches];
-                newMatches.splice(index, 1);
-                setFieldValue(`requirements.${reqIndex}.matches`, newMatches);
-                setActiveMatchIndices(prev => ({...prev, [reqIndex]: 0}));
-           };
-
-           // --- ADD/DELETE REQ HANDLERS ---
-           const handleAddReq = () => {
-               const newReq = { description: "", skillIds: [], matches: [] };
-               const newReqs = [...values.requirements, newReq];
-               setFieldValue("requirements", newReqs);
-               setActiveReqIndex(newReqs.length - 1);
-               setIsEditingDesc(true); // Auto-enter edit mode for new item
-           };
-
-           const handleDeleteReq = () => {
-               if (!window.confirm("Are you sure you want to delete this requirement?")) return;
-               const newReqs = values.requirements.filter((_: any, i: number) => i !== reqIndex);
-               
-               if (newReqs.length === 0) {
-                   // Ensure at least one exists
-                   newReqs.push({ description: "", skillIds: [], matches: [] });
-               }
-               
-               setFieldValue("requirements", newReqs);
-               // Adjust active index
-               if (reqIndex >= newReqs.length) {
-                   setActiveReqIndex(newReqs.length - 1);
-               }
-           };
-
-           // --- FILTER LOGIC ---
+           
            const reqSkillIds = (currentReq.skillIds || []).map((id: any) => id.toString());
 
            const filteredExperiences = experiences.filter(exp => {
                 if (reqSkillIds.length === 0) return true;
-
                 const expSkills = getExpSkills(exp);
                 const expSkillIds = expSkills.map((s: any) => s.id && s.id.toString());
-                
-                if (filterByAllSkills) {
-                     return reqSkillIds.every((reqId: string) => expSkillIds.includes(reqId));
-                }
-                
-                if (filterByRelatedSkills) {
-                     return reqSkillIds.some((reqId: string) => expSkillIds.includes(reqId));
-                }
-                
+                if (filterByAllSkills) return reqSkillIds.every((reqId: string) => expSkillIds.includes(reqId));
+                if (filterByRelatedSkills) return reqSkillIds.some((reqId: string) => expSkillIds.includes(reqId));
                 return true;
            });
+
+           // --- WRAPPER TO CHECK IF SKILL SHOULD BE ADDED TO REQUIREMENT ---
+           const checkAndAddRelatedSkill = (skillId: number) => {
+               const currentSkillIds = values.requirements[reqIndex].skillIds || [];
+               if (!currentSkillIds.includes(skillId)) {
+                   const skill = skills.find(s => s.id === skillId);
+                   const skillName = skill ? skill.title : "Unknown Skill";
+                   if (window.confirm(`The skill "${skillName}" is not listed in this Requirement's Related Skills.\n\nDo you want to add it?`)) {
+                       setFieldValue(`requirements.${reqIndex}.skillIds`, [...currentSkillIds, skillId]);
+                   }
+               }
+           };
 
            return (
             <Form>
               <FormObserver />
-              
               <div className="card edit-mode-container" style={{background: "#f8fafc", borderColor: "var(--primary)"}}>
                   
-                  {/* UNIFIED NAV/EDIT/HEADER BAR */}
                   <div style={{
                       display: "flex", 
                       alignItems: "center", 
@@ -395,11 +303,7 @@ export const EditJobRequirement = () => {
                                     type="text" 
                                     autoFocus
                                     placeholder="Enter Requirement Description..."
-                                    style={{ 
-                                        height: "38px", 
-                                        width: "100%", 
-                                        marginBottom: 0 
-                                    }}
+                                    style={{ height: "38px", width: "100%", marginBottom: 0 }}
                                     onKeyDown={(e: React.KeyboardEvent) => {
                                         if (e.key === "Enter") {
                                             e.preventDefault();
@@ -407,30 +311,13 @@ export const EditJobRequirement = () => {
                                         }
                                     }}
                                   />
-                                  <button 
-                                    type="button" 
-                                    className="btn-primary"
-                                    onClick={() => setIsEditingDesc(false)}
-                                    title="Done Editing"
-                                    style={{ padding: "0 12px" }}
-                                  >
-                                    ✓
-                                  </button>
+                                  <button type="button" className="btn-primary" onClick={() => setIsEditingDesc(false)} title="Done Editing" style={{ padding: "0 12px" }}>✓</button>
                               </div>
                           ) : (
                               <select 
                                 value={reqIndex} 
                                 onChange={(e) => handleSwitchReq(parseInt(e.target.value), dirty, resetForm)}
-                                style={{ 
-                                    width: "100%", 
-                                    fontWeight: "bold", 
-                                    fontSize: "1rem", 
-                                    marginBottom: 0,
-                                    cursor: "pointer", 
-                                    border: "1px solid transparent",
-                                    background: "transparent",
-                                    paddingLeft: 0
-                                }}
+                                style={{ width: "100%", fontWeight: "bold", fontSize: "1rem", marginBottom: 0, cursor: "pointer", border: "1px solid transparent", background: "transparent", paddingLeft: 0 }}
                                 className="req-switcher-select"
                               >
                                 {values.requirements.map((req: any, idx: number) => (
@@ -442,23 +329,20 @@ export const EditJobRequirement = () => {
                           )}
                       </div>
 
-                      {/* ACTIONS */}
                       {!isEditingDesc && (
-                          <button 
-                            type="button" 
-                            className="btn-secondary" 
-                            onClick={() => setIsEditingDesc(true)}
-                            title="Edit Description"
-                            style={{ padding: "8px 12px" }}
-                          >
-                            ✎
-                          </button>
+                          <button type="button" className="btn-secondary" onClick={() => setIsEditingDesc(true)} title="Edit Description" style={{ padding: "8px 12px" }}>✎</button>
                       )}
                       
                       <button 
                         type="button" 
                         className="btn-secondary" 
-                        onClick={handleAddReq}
+                        onClick={() => {
+                           const newReq = { description: "", skillIds: [], matches: [] };
+                           const newReqs = [...values.requirements, newReq];
+                           setFieldValue("requirements", newReqs);
+                           setActiveReqIndex(newReqs.length - 1);
+                           setIsEditingDesc(true);
+                        }}
                         title="Add New Requirement"
                         style={{ padding: "8px 12px" }}
                       >
@@ -469,7 +353,13 @@ export const EditJobRequirement = () => {
                         type="button" 
                         className="btn-ghost" 
                         style={{ color: "var(--danger)", padding: "8px 12px" }}
-                        onClick={handleDeleteReq}
+                        onClick={() => {
+                           if (!window.confirm("Are you sure you want to delete this requirement?")) return;
+                           const newReqs = values.requirements.filter((_: any, i: number) => i !== reqIndex);
+                           if (newReqs.length === 0) newReqs.push({ description: "", skillIds: [], matches: [] });
+                           setFieldValue("requirements", newReqs);
+                           if (reqIndex >= newReqs.length) setActiveReqIndex(newReqs.length - 1);
+                        }}
                         title="Delete Requirement"
                         disabled={values.requirements.length <= 1} 
                       >
@@ -484,7 +374,18 @@ export const EditJobRequirement = () => {
                     multiple={true} 
                     createEndpoint="/lists/skills" 
                     onOptionCreated={refreshSkills}
-                    onRename={updateSkill} 
+                    onRename={updateSkill}
+                    onDeleteOption={async (id: number) => {
+                        if (!window.confirm("Warning: You are about to delete this skill globally from all experiences and requirements.\n\nAre you sure?")) return;
+                        
+                        await deleteGlobalSkill(id);
+                        
+                        // Check if deleted skill was selected in this field and remove it
+                        const currentIds = values.requirements[reqIndex].skillIds || [];
+                        if (currentIds.includes(id)) {
+                             setFieldValue(`requirements.${reqIndex}.skillIds`, currentIds.filter((sid: any) => sid !== id));
+                        }
+                    }}
                   />
                   
                   <div style={{ background: "white", padding: "15px", borderRadius: "8px", border: "1px solid #e2e8f0", marginTop: "15px" }}>
@@ -496,67 +397,51 @@ export const EditJobRequirement = () => {
                           options={filteredExperiences} 
                           onCreate={(title: string) => handleCreateTempExperience(title, setFieldValue, currentReq.matches || [])}
                           
+                          onOpen={(id: number) => handleOpenExperience(id, values)}
+                          onDeleteOption={handleDeleteExperience} 
+                          onRename={(id: number, val: string) => updateExperience(id, 'title', val)}
+
                           renderOption={(exp: any) => {
                              const allExpSkills = getExpSkills(exp);
                              let displayedSkills = allExpSkills;
-
                              if (filterByRelatedSkills && reqSkillIds.length > 0) {
                                 displayedSkills = allExpSkills.filter((s: any) => s.isOrphan || reqSkillIds.includes(s.id.toString()));
                              }
 
                              return (
-                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", overflow: "hidden" }}>
-                                    <span style={{ fontWeight: 500, marginRight: "10px" }}>{exp.title}</span>
-                                    {displayedSkills.length > 0 && (
-                                        <span style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: "60%" }}>
-                                            ({displayedSkills.map((s: any) => s.title).join(", ")})
-                                        </span>
-                                    )}
-                                 </div>
+                                 <EditableText 
+                                     value={exp.title}
+                                     onSave={(val) => updateExperience(exp.id, 'title', val)}
+                                     style={{ 
+                                         width: "100%", 
+                                         border: "none", 
+                                         padding: 0, 
+                                         background: "transparent", 
+                                         cursor: "pointer",
+                                         display: "flex"
+                                     }}
+                                 >
+                                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", alignItems: "center", width: "100%" }}>
+                                        <span style={{ fontWeight: 500 }}>{exp.title}</span>
+                                        {displayedSkills.length > 0 && (
+                                            <div style={{ fontSize: "0.8rem", color: "var(--text-muted)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                                {displayedSkills.map((s: any) => s.title).join(", ")}
+                                            </div>
+                                        )}
+                                     </div>
+                                 </EditableText>
                              );
                           }}
 
                           headerContent={
                             <div style={{ display: "flex", gap: "15px", alignItems: "center", marginBottom: 0 }}>
-                                <label style={{ 
-                                    display: "flex", 
-                                    alignItems: "center", 
-                                    fontSize: "0.85rem", 
-                                    cursor: "pointer", 
-                                    marginBottom: 0,
-                                    fontWeight: "normal",
-                                    color: "var(--text-muted)"
-                                }}>
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filterByRelatedSkills} 
-                                        onChange={(e) => {
-                                            setFilterByRelatedSkills(e.target.checked);
-                                        }} 
-                                        style={{ width: "auto", marginBottom: 0, marginRight: "6px" }}
-                                    />
-                                    <span style={{ whiteSpace: "nowrap" }}>Filter by Related Skills</span>
+                                <label style={{ display: "flex", alignItems: "center", fontSize: "0.85rem", cursor: "pointer", marginBottom: 0, fontWeight: "normal", color: "var(--text-muted)" }}>
+                                    <input type="checkbox" checked={filterByRelatedSkills} onChange={(e) => setFilterByRelatedSkills(e.target.checked)} style={{ width: "auto", marginBottom: 0, marginRight: "6px" }} />
+                                    Filter by Related Skills
                                 </label>
-
-                                <label style={{ 
-                                    display: "flex", 
-                                    alignItems: "center", 
-                                    fontSize: "0.85rem", 
-                                    cursor: "pointer", 
-                                    marginBottom: 0,
-                                    fontWeight: "normal",
-                                    color: "var(--text-muted)"
-                                }}>
-                                    <input 
-                                        type="checkbox" 
-                                        checked={filterByAllSkills} 
-                                        onChange={(e) => {
-                                            setFilterByAllSkills(e.target.checked);
-                                            if (e.target.checked) setFilterByRelatedSkills(true);
-                                        }} 
-                                        style={{ width: "auto", marginBottom: 0, marginRight: "6px" }}
-                                    />
-                                    <span style={{ whiteSpace: "nowrap" }}>Filter by ALL Skills</span>
+                                <label style={{ display: "flex", alignItems: "center", fontSize: "0.85rem", cursor: "pointer", marginBottom: 0, fontWeight: "normal", color: "var(--text-muted)" }}>
+                                    <input type="checkbox" checked={filterByAllSkills} onChange={(e) => { setFilterByAllSkills(e.target.checked); if (e.target.checked) setFilterByRelatedSkills(true); }} style={{ width: "auto", marginBottom: 0, marginRight: "6px" }} />
+                                    Filter by ALL Skills
                                 </label>
                             </div>
                           }
@@ -564,7 +449,6 @@ export const EditJobRequirement = () => {
                           onSelect={(id: number) => {
                               const currentMatches = currentReq.matches || [];
                               const existingIndex = currentMatches.findIndex((m: any) => m.experienceId === id);
-                              
                               if (existingIndex >= 0) {
                                   setActiveMatchIndices(prev => ({...prev, [reqIndex]: existingIndex}));
                               } else {
@@ -576,12 +460,10 @@ export const EditJobRequirement = () => {
                               }
                           }}
                       />
-
-                      {/* --- PINNED TAB INTERFACE --- */}
+                      
                       {currentReq.matches && currentReq.matches.length > 0 && (
                         <>
                           <div className="tabs-row">
-                              {/* 1. Render ONLY the Active Tab (Pinned) */}
                               {(() => {
                                   const activeIndex = activeMatchIndices[reqIndex] ?? 0;
                                   const activeMatch = currentReq.matches[activeIndex] || currentReq.matches[0]; 
@@ -589,36 +471,18 @@ export const EditJobRequirement = () => {
 
                                   return (
                                     <div className="tab-static">
-                                        <EditableInsertButton 
+                                        <EditableText 
                                             targetId={`match-explanation-${reqIndex}`}
                                             value={getExpTitle(activeMatch.experienceId)}
                                             onSave={(val) => updateExperience(activeMatch.experienceId, 'title', val)}
-                                            onInsert={(e) => insertTextAtCursor(`match-explanation-${reqIndex}`, getExpTitle(activeMatch.experienceId), e)}
-                                            style={{
-                                                border: "none",
-                                                background: "transparent",
-                                                color: "inherit",
-                                                paddingRight: 0, 
-                                                fontWeight: "inherit",
-                                                fontSize: "0.9rem",
-                                                minWidth: "60px"
-                                            }}
+                                            onClick={(e) => insertTextAtCursor(`match-explanation-${reqIndex}`, getExpTitle(activeMatch.experienceId), e)}
+                                            style={{ border: "none", background: "transparent", color: "inherit", paddingRight: 0, fontWeight: "inherit", fontSize: "0.9rem", minWidth: "60px" }}
                                         />
                                         
                                         {isTemp && (
                                             <span 
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleSaveTempExperience(activeMatch.experienceId);
-                                                }}
-                                                style={{ 
-                                                    padding: "0 4px", 
-                                                    cursor: "pointer",
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    color: "var(--success)", 
-                                                    fontSize: "0.8rem"
-                                                }}
+                                                onClick={(e) => { e.stopPropagation(); }}
+                                                style={{ padding: "0 4px", cursor: "pointer", display: "flex", alignItems: "center", color: "var(--success)", fontSize: "0.8rem" }}
                                                 title="Save Experience to Database"
                                             >
                                                 💾
@@ -628,20 +492,12 @@ export const EditJobRequirement = () => {
                                         <span 
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                const indexToRemove = currentReq.matches.indexOf(activeMatch);
-                                                if (indexToRemove > -1) {
-                                                    handleRemoveMatch(activeMatch, indexToRemove);
-                                                }
+                                                const newMatches = [...currentReq.matches];
+                                                newMatches.splice(activeIndex, 1);
+                                                setFieldValue(`requirements.${reqIndex}.matches`, newMatches);
+                                                setActiveMatchIndices(prev => ({...prev, [reqIndex]: 0}));
                                             }}
-                                            style={{ 
-                                                padding: "0 4px", 
-                                                cursor: "pointer",
-                                                marginLeft: "4px",
-                                                display: "flex",
-                                                alignItems: "center",
-                                                fontSize: "1.1rem",
-                                                lineHeight: 1
-                                            }}
+                                            style={{ padding: "0 4px", cursor: "pointer", marginLeft: "4px", display: "flex", alignItems: "center", fontSize: "1.1rem", lineHeight: 1 }}
                                             title="Remove Match"
                                         >
                                             ×
@@ -650,15 +506,11 @@ export const EditJobRequirement = () => {
                                   );
                               })()}
 
-                              {/* 2. Render the REST in the scrollable area */}
                               <div className="tabs-scroll-area">
                                   {currentReq.matches.map((match: any, matchIdx: number) => {
                                       const activeIndex = activeMatchIndices[reqIndex] ?? 0;
                                       const isActive = matchIdx === activeIndex;
-                                      
                                       if (isActive) return null;
-
-                                      const isTemp = match.experienceId < 0;
 
                                       return (
                                         <div 
@@ -666,58 +518,21 @@ export const EditJobRequirement = () => {
                                             className="tab-scrollable"
                                             onClick={() => setActiveMatchIndices(prev => ({...prev, [reqIndex]: matchIdx}))}
                                         >
-                                            <EditableInsertButton 
+                                            <EditableText 
                                                 targetId={`match-explanation-${reqIndex}`} 
                                                 value={getExpTitle(match.experienceId)}
                                                 onSave={(val) => updateExperience(match.experienceId, 'title', val)}
-                                                onInsert={() => {
-                                                    setActiveMatchIndices(prev => ({...prev, [reqIndex]: matchIdx}));
-                                                }}
-                                                style={{
-                                                    border: "none",
-                                                    background: "transparent",
-                                                    color: "inherit",
-                                                    paddingRight: 0, 
-                                                    fontWeight: "inherit",
-                                                    fontSize: "0.9rem",
-                                                    minWidth: "60px"
-                                                }}
+                                                onClick={() => { setActiveMatchIndices(prev => ({...prev, [reqIndex]: matchIdx})); }}
+                                                style={{ border: "none", background: "transparent", color: "inherit", paddingRight: 0, fontWeight: "inherit", fontSize: "0.9rem", minWidth: "60px" }}
                                             />
-                                            
-                                            {isTemp && (
-                                                <span 
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        handleSaveTempExperience(match.experienceId);
-                                                    }}
-                                                    style={{ 
-                                                        padding: "0 4px", 
-                                                        cursor: "pointer",
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        color: "var(--success)", 
-                                                        fontSize: "0.8rem"
-                                                    }}
-                                                    title="Save Experience to Database"
-                                                >
-                                                    💾
-                                                </span>
-                                            )}
-
                                             <span 
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    handleRemoveMatch(match, currentReq.matches.indexOf(match));
+                                                    const newMatches = [...currentReq.matches];
+                                                    newMatches.splice(matchIdx, 1);
+                                                    setFieldValue(`requirements.${reqIndex}.matches`, newMatches);
                                                 }}
-                                                style={{ 
-                                                    padding: "0 4px", 
-                                                    cursor: "pointer",
-                                                    marginLeft: "4px",
-                                                    display: "flex",
-                                                    alignItems: "center",
-                                                    fontSize: "1.1rem",
-                                                    lineHeight: 1
-                                                }}
+                                                style={{ padding: "0 4px", cursor: "pointer", marginLeft: "4px", display: "flex", alignItems: "center", fontSize: "1.1rem", lineHeight: 1 }}
                                                 title="Remove Match"
                                             >
                                                 ×
@@ -744,108 +559,39 @@ export const EditJobRequirement = () => {
                                       if (!hasSharedSkill) return acc;
                                       const match = r.matches?.find((m: any) => m.experienceId === matchData.experienceId);
                                       if (match && match.matchExplanation) {
-                                          acc.push({
-                                              reqDesc: r.description,
-                                              explanation: match.matchExplanation
-                                          });
+                                          acc.push({ reqDesc: r.description, explanation: match.matchExplanation });
                                       }
                                       return acc;
                                   }, []);
 
-                                  const insertBtnStyle = { 
-                                      padding: "4px 8px", 
-                                      fontSize: "0.8rem", 
-                                      flex: 1, 
-                                      whiteSpace: "nowrap" as const, 
-                                      overflow: "hidden", 
-                                      textOverflow: "ellipsis",
-                                      textAlign: "center" as const
-                                  };
+                                  const insertBtnStyle = { padding: "4px 8px", fontSize: "0.8rem", flex: 1, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", textAlign: "center" as const };
 
                                   return (
                                       <>
                                           <div style={{ marginBottom: "10px" }}>
                                               <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
                                                   <div style={{ display: "flex", gap: "5px", width: "100%" }}>
-                                                    <EditableInsertButton 
-                                                        targetId={targetId}
-                                                        value={fullExp?.position}
-                                                        placeholder="Position"
-                                                        style={insertBtnStyle}
-                                                        onSave={(val) => updateExperience(matchData.experienceId, 'position', val)}
-                                                    />
-                                                    <EditableInsertButton 
-                                                        targetId={targetId}
-                                                        value={fullExp?.location}
-                                                        placeholder="Location"
-                                                        style={insertBtnStyle}
-                                                        onSave={(val) => updateExperience(matchData.experienceId, 'location', val)}
-                                                    />
-                                                    <EditableInsertButton 
-                                                        targetId={targetId}
-                                                        value={fullExp?.duration}
-                                                        placeholder="Duration"
-                                                        style={insertBtnStyle}
-                                                        onSave={(val) => updateExperience(matchData.experienceId, 'duration', val)}
-                                                    />
+                                                    <EditableText targetId={targetId} value={fullExp?.position} placeholder="Position" style={insertBtnStyle} onSave={(val) => updateExperience(matchData.experienceId, 'position', val)} />
+                                                    <EditableText targetId={targetId} value={fullExp?.location} placeholder="Location" style={insertBtnStyle} onSave={(val) => updateExperience(matchData.experienceId, 'location', val)} />
+                                                    <EditableText targetId={targetId} value={fullExp?.duration} placeholder="Duration" style={insertBtnStyle} onSave={(val) => updateExperience(matchData.experienceId, 'duration', val)} />
                                                   </div>
-                                                  
                                                   <div style={{ display: "flex", width: "100%" }}>
-                                                      <EditableInsertButton 
-                                                          targetId={targetId}
-                                                          value={fullExp?.description}
-                                                          placeholder="Description"
-                                                          style={{...insertBtnStyle, textAlign: "left"}}
-                                                          onSave={(val) => updateExperience(matchData.experienceId, 'description', val)}
-                                                      />
+                                                      <EditableText targetId={targetId} value={fullExp?.description} placeholder="Description" style={{...insertBtnStyle, textAlign: "left"}} onSave={(val) => updateExperience(matchData.experienceId, 'description', val)} />
                                                   </div>
                                               </div>
                                           </div>
                                           
-                                          <Field 
-                                              id={targetId} 
-                                              name={`requirements.${reqIndex}.matches.${validIndex}.matchExplanation`} 
-                                              as="textarea" 
-                                              rows={3} 
-                                              placeholder={`How does "${getExpTitle(matchData.experienceId)}" meet this requirement?`}
-                                              style={{ 
-                                                  marginBottom: 0, 
-                                                  borderBottomLeftRadius: 0, 
-                                                  borderBottomRightRadius: 0,
-                                                  resize: "vertical"
-                                              }} 
-                                          />
+                                          <Field id={targetId} name={`requirements.${reqIndex}.matches.${validIndex}.matchExplanation`} as="textarea" rows={3} placeholder={`How does "${getExpTitle(matchData.experienceId)}" meet this requirement?`} style={{ marginBottom: 0, borderBottomLeftRadius: 0, borderBottomRightRadius: 0, resize: "vertical" }} />
 
                                           {otherExplanations.length > 0 && (
                                               <select
-                                                  style={{ 
-                                                      width: "100%", 
-                                                      borderTop: "none", 
-                                                      borderTopLeftRadius: 0, 
-                                                      borderTopRightRadius: 0,
-                                                      background: "#f1f5f9",
-                                                      fontSize: "0.8rem",
-                                                      color: "var(--text-muted)",
-                                                      marginBottom: "10px",
-                                                      cursor: "pointer",
-                                                      padding: "4px 8px",
-                                                      height: "auto"
-                                                  }}
+                                                  style={{ width: "100%", borderTop: "none", borderTopLeftRadius: 0, borderTopRightRadius: 0, background: "#f1f5f9", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "10px", cursor: "pointer", padding: "4px 8px", height: "auto" }}
                                                   value=""
-                                                  onChange={(e) => {
-                                                      if(e.target.value) {
-                                                          insertTextAtCursor(targetId, e.target.value, { ctrlKey: true } as any);
-                                                          e.target.value = ""; 
-                                                      }
-                                                  }}
+                                                  onChange={(e) => { if(e.target.value) { insertTextAtCursor(targetId, e.target.value, { ctrlKey: true } as any); e.target.value = ""; } }}
                                               >
                                                   <option value="" disabled selected hidden>-- Copy from similar requirement --</option>
                                                   {otherExplanations.map((item: any, idx: number) => (
-                                                      <option key={idx} value={item.explanation}>
-                                                          {item.reqDesc.length > 60 ? item.reqDesc.substring(0,60)+"..." : item.reqDesc}
-                                                          {" → "}
-                                                          {item.explanation.length > 120 ? item.explanation.substring(0,120)+"..." : item.explanation}
-                                                      </option>
+                                                      <option key={idx} value={item.explanation}>{item.reqDesc.substring(0,60)}... → {item.explanation.substring(0,120)}...</option>
                                                   ))}
                                               </select>
                                           )}
@@ -857,10 +603,16 @@ export const EditJobRequirement = () => {
                                               allSkills={skills} 
                                               relatedSkillIds={reqSkillIds} 
                                               onSkillDemoUpdate={updateSkillDemonstration}
-                                              onAddSkillDemo={handleAddSkillDemonstration} 
+                                              onAddSkillDemo={async (expId: number, skillId: number, exp: string) => {
+                                                  checkAndAddRelatedSkill(skillId);
+                                                  await handleAddSkillDemonstration(expId, skillId, exp);
+                                              }} 
                                               onDeleteSkillDemo={handleDeleteSkillDemonstration}
                                               onGlobalSkillCreated={refreshSkills}
-                                              onSkillChange={handleSkillReassign} 
+                                              onSkillChange={async (demoId: number, newSkillId: number) => {
+                                                  checkAndAddRelatedSkill(newSkillId);
+                                                  await handleSkillReassign(demoId, newSkillId);
+                                              }} 
                                               onGlobalSkillRename={updateSkill}
                                               onGlobalSkillDelete={deleteGlobalSkill}
                                           />
@@ -872,24 +624,10 @@ export const EditJobRequirement = () => {
                       )}
                   </div>
               </div>
-
+              
               <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
-                 <button 
-                   type="button" 
-                   onClick={() => submitForm()} 
-                   className="btn-primary" 
-                   style={{ flex: 1 }}
-                 >
-                   Save Changes
-                 </button>
-                 <button 
-                   type="button" 
-                   onClick={() => handleReturn(dirty)} 
-                   className="btn-secondary" 
-                   style={{ flex: 1 }}
-                 >
-                   Return to Job
-                 </button>
+                 <button type="button" onClick={() => submitForm()} className="btn-primary" style={{ flex: 1 }}>Save Changes</button>
+                 <button type="button" onClick={() => handleReturn(dirty)} className="btn-secondary" style={{ flex: 1 }}>Return to Job</button>
               </div>
             </Form>
            );

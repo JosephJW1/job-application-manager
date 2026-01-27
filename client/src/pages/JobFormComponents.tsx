@@ -2,186 +2,11 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useFormikContext } from "formik";
 import { useFormState } from "../context/FormStateContext";
 import api from "../api";
+import { EditableText, insertTextAtCursor } from "../components/EditableText";
+import { ItemList } from "../components/ItemList";
 
-// --- HELPER: TEXT INSERTION ---
-export const insertTextAtCursor = (targetId: string, text: string | undefined, e: React.MouseEvent | React.ChangeEvent) => {
-  if (!text) return;
-  
-  let valToInsert = text;
-  if (e && 'ctrlKey' in e && !(e as React.MouseEvent).ctrlKey) {
-     valToInsert = text.toLowerCase();
-  }
-
-  const textarea = document.getElementById(targetId) as HTMLTextAreaElement;
-  if (textarea) {
-    textarea.focus();
-    const success = document.execCommand("insertText", false, valToInsert);
-    if (!success) {
-      const start = textarea.selectionStart;
-      const end = textarea.selectionEnd;
-      textarea.setRangeText(valToInsert, start, end, 'end');
-      textarea.dispatchEvent(new Event('input', { bubbles: true }));
-    }
-  }
-};
-
-// --- COMPONENT: EDITABLE INSERT BUTTON ---
-interface EditableBtnProps {
-  value?: string; 
-  placeholder?: string;
-  targetId: string; 
-  onSave?: (newValue: string) => Promise<void>; 
-  onInsert?: (e: React.MouseEvent) => void; 
-  style?: React.CSSProperties;
-  className?: string;
-  isChip?: boolean; 
-}
-
-export const EditableInsertButton = ({ value, placeholder, targetId, onSave, onInsert, style, className, isChip }: EditableBtnProps) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [tempVal, setTempVal] = useState(value || "");
-  const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => { setTempVal(value || ""); }, [value]);
-  useEffect(() => { if (isEditing && inputRef.current) inputRef.current.focus(); }, [isEditing]);
-
-  const handleInsert = (e: React.MouseEvent) => {
-    if (isEditing) return;
-    if (onInsert) onInsert(e);
-    else insertTextAtCursor(targetId, value, e);
-  };
-
-  const handleEditClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    setIsEditing(true);
-  };
-
-  const handleSave = async () => {
-    if (!onSave) return;
-    
-    setLoading(true);
-    try {
-      await onSave(tempVal);
-      setIsEditing(false);
-    } catch (err) {
-      alert("Failed to save update");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleCancel = () => {
-    setTempVal(value || "");
-    setIsEditing(false);
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
-      e.preventDefault(); 
-      handleSave();
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      handleCancel();
-    }
-  };
-
-  const { padding, paddingLeft, paddingRight, paddingTop, paddingBottom, ...safeStyle } = style || {};
-
-  const borderColor = isEditing ? "var(--primary)" : "#cbd5e1";
-
-  const containerStyle: React.CSSProperties = {
-    position: "relative", 
-    display: "inline-flex", 
-    alignItems: "stretch", 
-    padding: 0,
-    overflow: "hidden",
-    cursor: isEditing ? "default" : "pointer",
-    
-    // Explicit borders to avoid React warnings when overriding in safeStyle
-    borderTop: `1px solid ${borderColor}`,
-    borderBottom: `1px solid ${borderColor}`,
-    borderLeft: `1px solid ${borderColor}`,
-    borderRight: `1px solid ${borderColor}`,
-    
-    ...safeStyle,
-  };
-
-  const textStyle: React.CSSProperties = {
-    flex: 1,
-    padding: isChip ? "4px 8px" : "8px 12px",
-    display: "flex",
-    alignItems: "center",
-    whiteSpace: "nowrap",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-  };
-
-  const actionStyle: React.CSSProperties = {
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    width: "30px", 
-    borderLeft: "1px solid rgba(0,0,0,0.1)",
-    background: isEditing ? "var(--success)" : "rgba(0,0,0,0.03)",
-    color: isEditing ? "white" : "var(--text-muted)",
-    cursor: "pointer",
-    transition: "background 0.2s",
-  };
-
-  return (
-    <div 
-      className={`btn-secondary ${className || ""}`}
-      style={containerStyle}
-      onClick={!isEditing ? handleInsert : undefined}
-      onMouseDown={(e) => !isEditing && e.preventDefault()} 
-    >
-      {isEditing ? (
-        <div style={{ flex: 1, display: "flex", width: "100%" }}>
-           <input 
-             ref={inputRef}
-             value={tempVal}
-             onChange={(e) => setTempVal(e.target.value)}
-             onKeyDown={handleKeyDown}
-             onBlur={handleCancel} 
-             style={{ 
-               width: "100%", 
-               border: "none", 
-               background: "white", 
-               font: "inherit", 
-               padding: "4px 8px",
-               outline: "none",
-               color: "var(--text-main)"
-             }}
-           />
-        </div>
-      ) : (
-        <div style={textStyle} title={value}>
-          {value || <span style={{opacity: 0.5}}>{placeholder}</span>}
-        </div>
-      )}
-
-      {onSave && (
-        <div 
-          style={actionStyle}
-          onMouseDown={(e) => e.preventDefault()}
-          onClick={isEditing ? (e) => { e.stopPropagation(); handleSave(); } : handleEditClick}
-          onMouseEnter={(e) => !isEditing && (e.currentTarget.style.background = "rgba(0,0,0,0.08)")}
-          onMouseLeave={(e) => !isEditing && (e.currentTarget.style.background = "rgba(0,0,0,0.03)")}
-          title={isEditing ? "Save (Enter)" : "Edit"}
-        >
-          {loading ? (
-             <span style={{fontSize: "10px"}}>...</span> 
-          ) : isEditing ? (
-             <span style={{ fontSize: "14px", fontWeight: "bold" }}>✓</span>
-          ) : (
-             <span style={{ fontSize: "12px" }}>✎</span>
-          )}
-        </div>
-      )}
-    </div>
-  );
-};
+// Re-export for compatibility
+export { EditableText, insertTextAtCursor };
 
 // --- COMPONENT: SEARCHABLE DROPDOWN ---
 export const SearchableDropdown = ({ 
@@ -201,12 +26,14 @@ export const SearchableDropdown = ({
   autoFocus,
   onCancel,
   initialSearch,
-  onDeleteOption
+  onDeleteOption,
+  onOpen
 }: any) => {
   const { values, setFieldValue } = useFormikContext<any>() || {};
   const [search, setSearch] = useState(initialSearch || ""); 
   const [isOpen, setIsOpen] = useState(false);
   const [filteredOptions, setFilteredOptions] = useState<any[]>([]);
+  const [activeId, setActiveId] = useState<number | null>(null); 
   
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -233,10 +60,9 @@ export const SearchableDropdown = ({
     const lowerSearch = search.toLowerCase();
     
     let filtered = options.filter((opt: any) => 
-      opt.title.toLowerCase().includes(lowerSearch) || selectedIds.includes(opt.id)
+      opt.title.toLowerCase().includes(lowerSearch)
     );
 
-    // Sort to put selected item first
     filtered = filtered.sort((a: any, b: any) => {
         const aSelected = selectedIds.includes(a.id);
         const bSelected = selectedIds.includes(b.id);
@@ -246,6 +72,8 @@ export const SearchableDropdown = ({
     });
 
     setFilteredOptions(filtered);
+    setActiveId(null); 
+
   }, [search, options, selectedIds]);
 
   useEffect(() => {
@@ -270,8 +98,13 @@ export const SearchableDropdown = ({
         if (onSelect) {
             onSelect(id);
         } else {
-            if (multiple) setFieldValue(name, [...selectedIds, id]);
-            else setFieldValue(name, id);
+            if (multiple) {
+                if (!selectedIds.includes(id)) {
+                    setFieldValue(name, [...selectedIds, id]);
+                }
+            } else {
+                setFieldValue(name, id);
+            }
         }
     } catch (err) {
         console.error("Selection error:", err);
@@ -284,42 +117,80 @@ export const SearchableDropdown = ({
   const handleRemove = (idToRemove: number) => setFieldValue(name, selectedIds.filter((id: number) => id !== idToRemove));
   
   const handleKeyDown = async (e: React.KeyboardEvent) => {
-    if (e.key === "Enter") {
+    if (e.key === "ArrowDown") {
+        e.preventDefault();
+        if (!isOpen) setIsOpen(true);
+        if (filteredOptions.length === 0) return;
+        
+        if (activeId === null) {
+            setActiveId(filteredOptions[0].id);
+        } else {
+            const currentIndex = filteredOptions.findIndex(o => o.id === activeId);
+            const nextIndex = (currentIndex + 1) % filteredOptions.length;
+            setActiveId(filteredOptions[nextIndex].id);
+        }
+    } 
+    else if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (!isOpen) setIsOpen(true);
+        if (filteredOptions.length === 0) return;
+
+        if (activeId === null) {
+            setActiveId(filteredOptions[filteredOptions.length - 1].id);
+        } else {
+            const currentIndex = filteredOptions.findIndex(o => o.id === activeId);
+            const prevIndex = (currentIndex - 1 + filteredOptions.length) % filteredOptions.length;
+            setActiveId(filteredOptions[prevIndex].id);
+        }
+    }
+    else if (e.key === "Enter") {
       e.preventDefault();
+      
+      const activeOption = filteredOptions.find(o => o.id === activeId);
+      if (activeId !== null && isOpen && activeOption) {
+          handleSelect(activeId); 
+          return;
+      }
+
       if (!search.trim()) return;
 
       const exactMatch = options.find((o: any) => o.title.toLowerCase() === search.toLowerCase());
-      const canCreate = !!onCreate || !!createEndpoint;
-      const targetMatch = exactMatch || (!canCreate && filteredOptions.length > 0 ? filteredOptions[0] : null);
-
-      if (targetMatch) { handleSelect(targetMatch.id); return; }
-
-      if (onCreate) {
-        onCreate(search);
-        setSearch("");
-        setIsOpen(false);
-        if (inputRef.current) inputRef.current.blur();
-      } else if (createEndpoint) {
-        try {
-          const res = await api.post(createEndpoint, { title: search });
-          if(onOptionCreated) onOptionCreated(res.data);
-          handleSelect(res.data.id);
-        } catch (err: any) { alert("Error: " + err.message); }
+      if (exactMatch) {
+          handleSelect(exactMatch.id);
+          return;
       }
-    } else if (e.key === "Escape") {
+
+      const canCreate = !!onCreate || !!createEndpoint;
+      if (canCreate) {
+          if (onCreate) {
+             onCreate(search);
+             setSearch("");
+             setIsOpen(false);
+             if (inputRef.current) inputRef.current.blur();
+          } else if (createEndpoint) {
+             try {
+                const res = await api.post(createEndpoint, { title: search });
+                if(onOptionCreated) onOptionCreated(res.data);
+                handleSelect(res.data.id);
+             } catch (err: any) { alert("Error: " + err.message); }
+          }
+          return;
+      }
+
+      if (filteredOptions.length > 0) {
+          handleSelect(filteredOptions[0].id);
+      }
+    } 
+    else if (e.key === "Escape") {
         e.preventDefault();
         setIsOpen(false);
         if (onCancel) onCancel();
     }
   };
   
-  const getTitle = (id: number) => options.find((o: any) => o.id === id)?.title || id;
-
   const handleBlur = (e: React.FocusEvent) => {
       if (onCancel) {
-          if (wrapperRef.current && wrapperRef.current.contains(e.relatedTarget as Node)) {
-              return;
-          }
+          if (wrapperRef.current && wrapperRef.current.contains(e.relatedTarget as Node)) { return; }
           onCancel();
       }
   };
@@ -341,6 +212,7 @@ export const SearchableDropdown = ({
         value={search} 
         onChange={(e) => {
             setSearch(e.target.value);
+            setActiveId(null); 
             if (!isOpen) setIsOpen(true);
         }} 
         onBlur={handleBlur}
@@ -352,107 +224,81 @@ export const SearchableDropdown = ({
       />
       
       {isOpen && (
-        <div style={{ position: "absolute", zIndex: 100, width: "100%", maxHeight: "250px", overflowY: "auto", background: "white", borderRadius: "8px", border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", marginTop: "4px" }}>
-          {filteredOptions.length > 0 ? (
-            filteredOptions.map((opt: any) => {
-              const isSelected = selectedIds.includes(opt.id);
-              return (
-                <div 
-                  key={opt.id} 
-                  onMouseDown={(e) => {
-                      e.preventDefault(); 
-                  }}
-                  style={{ 
-                      padding: "10px 15px", 
-                      cursor: "pointer", 
-                      borderBottom: "1px solid #f1f5f9", 
-                      fontSize: "0.9rem",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      background: isSelected ? "#eff6ff" : "transparent",
-                      fontWeight: isSelected ? "bold" : "normal",
-                      color: isSelected ? "var(--primary)" : "inherit"
-                  }} 
-                  onMouseEnter={(e) => e.currentTarget.style.background = isSelected ? "#eff6ff" : "#f8fafc"} 
-                  onMouseLeave={(e) => e.currentTarget.style.background = isSelected ? "#eff6ff" : "white"}
-                  onClick={() => handleSelect(opt.id)}
-                >
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", overflow: "hidden" }}>
-                      {isSelected && <span>✓</span>}
-                      <span>{renderOption ? renderOption(opt) : opt.title}</span>
-                  </div>
-                  
-                  {onDeleteOption && (
-                      <span 
-                          onMouseDown={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation(); 
-                              onDeleteOption(opt.id);
-                          }}
-                          style={{ color: "#ef4444", fontSize: "1.1rem", paddingLeft: "10px", lineHeight: 1, cursor: "pointer" }}
-                          title="Delete Skill (Global)"
-                      >
-                          🗑️
-                      </span>
-                  )}
-                </div>
-              );
-            })
-          ) : (<div style={{ padding: "12px", color: "#64748b", fontSize: "0.9rem", textAlign: "center" }}>{search ? <span>Press <strong>Enter</strong> to create "{search}"</span> : "Type to search..."}</div>)}
+        // FIX: Removed maxHeight and overflowY from here. 
+        // The internal <ItemList> (via .item-list CSS class) now handles the scrolling.
+        <div style={{ position: "absolute", zIndex: 100, width: "100%", background: "white", borderRadius: "8px", border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", marginTop: "4px" }}>
+            <ItemList 
+                items={filteredOptions}
+                selectedIds={selectedIds}
+                activeId={activeId}
+                onItemClick={(item) => handleSelect(item.id)}
+                onDelete={onDeleteOption} 
+                onRename={onRename}       
+                onOpen={onOpen}
+                renderContent={renderOption}
+                emptyMessage={search ? <span>Press <strong>Enter</strong> to create "{search}"</span> : "Type to search..."}
+            />
         </div>
       )}
 
       {multiple && !onSelect && selectedIds.length > 0 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "8px" }}>
-          {selectedIds.map((id: number) => (
-            <div key={id} style={{ display: "inline-flex", alignItems: "stretch", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
-               <EditableInsertButton 
-                  targetId="" 
-                  value={getTitle(id)}
-                  onSave={onRename ? (val) => onRename(id, val) : undefined}
-                  onInsert={(e) => { e.preventDefault(); }} 
-                  isChip={true}
-                  style={{ 
-                    borderTopRightRadius: 0, 
-                    borderBottomRightRadius: 0, 
-                    borderRight: "none",
-                    background: "#e0e7ff",
-                    color: "var(--primary)",
-                    fontWeight: 500,
-                    fontSize: "0.85rem"
-                  }}
-               />
-               
-               <button 
-                  type="button" 
-                  onClick={() => handleRemove(id)}
-                  style={{
-                    border: "1px solid #cbd5e1",
-                    borderLeft: "1px solid rgba(0,0,0,0.1)",
-                    borderTopLeftRadius: 0,
-                    borderBottomLeftRadius: 0,
-                    background: "#e0e7ff",
-                    color: "var(--primary)",
-                    cursor: "pointer",
-                    padding: "0 8px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center"
-                  }}
-                  title="Remove Skill"
-               >
-                 ×
-               </button>
-            </div>
-          ))}
+          {selectedIds.map((id: number) => {
+            const exists = options.find((o:any) => o.id === id);
+            if (!exists) return null;
+
+            return (
+              <div key={id} style={{ display: "inline-flex", alignItems: "stretch", boxShadow: "0 1px 2px rgba(0,0,0,0.05)" }}>
+                 <EditableText 
+                    targetId="" 
+                    value={exists.title} 
+                    onSave={onRename ? (val) => onRename(id, val) : undefined}
+                    onClick={(e) => { 
+                        e.preventDefault();
+                        if(onOpen) onOpen(id); 
+                    }} 
+                    isChip={true}
+                    style={{ 
+                      borderTopRightRadius: 0, 
+                      borderBottomRightRadius: 0, 
+                      borderRight: "none",
+                      background: "#e0e7ff",
+                      color: "var(--primary)",
+                      fontWeight: 500,
+                      fontSize: "0.85rem",
+                      cursor: onOpen ? "pointer" : "default"
+                    }}
+                 />
+                 
+                 <button 
+                    type="button" 
+                    onClick={() => handleRemove(id)}
+                    style={{
+                      border: "1px solid #cbd5e1",
+                      borderLeft: "1px solid rgba(0,0,0,0.1)",
+                      borderTopLeftRadius: 0,
+                      borderBottomLeftRadius: 0,
+                      background: "#e0e7ff",
+                      color: "var(--primary)",
+                      cursor: "pointer",
+                      padding: "0 8px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center"
+                    }}
+                    title="Remove Skill"
+                 >
+                   ×
+                 </button>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 };
 
-// --- COMPONENT: EXPLANATION LIST ---
 export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated, onSkillChange, onGlobalSkillRename, onGlobalSkillDelete }: any) => {
   if (!experienceId) return null;
   const selectedExp = experiences.find((e: any) => e.id.toString() === experienceId.toString());
@@ -522,12 +368,10 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
       <div style={{ display: "grid", gap: "8px" }}>
         {visibleSkills.length > 0 ? visibleSkills.map((s: any) => (
           <div key={s.id} style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: "8px", alignItems: "stretch" }}>
-             {/* Column 1: Skill Action Group */}
              <div style={{ height: "100%", position: "relative" }}>
                  
                  {changingSkillDemoId === s.demoId ? (
                      <div style={{ display: "flex", height: "100%", alignItems: "stretch" }}>
-                         {/* 1. Cancel Button (Left) */}
                          <div 
                             onClick={() => setChangingSkillDemoId(null)}
                             style={{
@@ -536,7 +380,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                                 justifyContent: "center",
                                 width: "30px",
                                 background: "#fef2f2",
-                                // Explicit borders to prevent conflict warnings
                                 borderTop: "1px solid #fee2e2",
                                 borderBottom: "1px solid #fee2e2",
                                 borderLeft: "1px solid #fee2e2",
@@ -553,7 +396,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                             ✕
                          </div>
 
-                         {/* 2. Dropdown */}
                          <div style={{ flex: 1 }}>
                              <SearchableDropdown 
                                 autoFocus={true} 
@@ -568,6 +410,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                                 onCancel={() => setChangingSkillDemoId(null)} 
                                 createEndpoint="/lists/skills"
                                 onOptionCreated={onGlobalSkillCreated}
+                                onRename={onGlobalSkillRename}
                                 onDeleteOption={async (id: number) => {
                                     if(window.confirm("Warning: You are about to delete this skill globally from all experiences and requirements.\n\nAre you sure?")) {
                                         if (onGlobalSkillDelete) await onGlobalSkillDelete(id);
@@ -578,7 +421,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                      </div>
                  ) : (
                      <div style={{ display: "flex", height: "100%", alignItems: "stretch" }}>
-                         {/* 1. Left Arrow (Toggle Dropdown) */}
                          <div 
                              onClick={() => setChangingSkillDemoId(s.demoId)}
                              style={{
@@ -587,7 +429,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                                  justifyContent: "center",
                                  width: "30px",
                                  background: "rgba(0,0,0,0.03)",
-                                 // Explicit borders
                                  borderTop: "1px solid #cbd5e1",
                                  borderBottom: "1px solid #cbd5e1",
                                  borderLeft: "1px solid #cbd5e1",
@@ -606,11 +447,10 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                              ▼
                          </div>
 
-                         {/* 2. Middle & Right (Insert + Edit) */}
-                         <EditableInsertButton 
+                         <EditableText 
                             targetId={targetId}
                             value={s.title}
-                            onInsert={(e) => insertTextAtCursor(targetId, s.title, e)}
+                            onClick={(e) => insertTextAtCursor(targetId, s.title, e)}
                             onSave={async (newVal) => {
                                 if (s.isOrphan) return;
                                 if (newVal === s.title) return; 
@@ -629,8 +469,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                  )}
              </div>
 
-             {/* Column 2: Explanation */}
-             <EditableInsertButton 
+             <EditableText 
                targetId={targetId}
                value={s.ExpSkillDemo?.explanation}
                placeholder="No explanation saved"
@@ -648,7 +487,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                }}
              />
 
-             {/* Column 3: Delete */}
              {onDeleteSkillDemo && (
                  <button 
                     type="button" 
@@ -671,7 +509,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
             </div>
         )}
 
-        {/* --- ADD NEW SKILL FORM --- */}
         <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: "8px", alignItems: "stretch" }}>
              <div style={{ height: "100%" }}>
                 <SearchableDropdown 
@@ -682,6 +519,8 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                         if(onGlobalSkillCreated) onGlobalSkillCreated(newSkill); 
                         setNewSkillId(newSkill.id);
                     }}
+                    onRename={onGlobalSkillRename}
+                    onDeleteOption={onGlobalSkillDelete}
                     placeholder={
                         newSkillId 
                         ? (allSkills?.find((s: any) => s.id === newSkillId)?.title || "Selected") 

@@ -4,6 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import api from "../api";
 import { useFormState } from "../context/FormStateContext"; 
 import { SearchableDropdown, FormObserver } from "./JobFormComponents"; 
+import { DataTable, type Column } from "../components/DataTable"; // FIXED: Type import
 import type { Experience, JobTag } from "../types";
 
 // --- HELPER: Restores Draft Data ---
@@ -13,7 +14,6 @@ const DraftRestorer = () => {
   const state = location.state as any;
 
   useEffect(() => {
-    // UPDATED: Only restore if returning from Requirement Edit (no longer checks for newId)
     if (state?.returnFromReq) {
       const draft = sessionStorage.getItem("job_form_draft");
       if (draft) {
@@ -67,16 +67,16 @@ export const CreateJob = () => {
   }, [state, view, setIsDirty, navigate, location.pathname]);
 
   useEffect(() => {
-    // UPDATED: Logic simplified
     if (state?.returnFromReq) {
       setView("form");
     }
   }, [state]);
 
-  const handleDelete = async (id: number) => {
-    if (!window.confirm("Are you sure?")) return;
-    await api.delete(`/jobs/${id}`);
-    fetchData();
+  const handleDelete = async (ids: number[]) => {
+    try {
+        await Promise.all(ids.map(id => api.delete(`/jobs/${id}`)));
+        fetchData();
+    } catch(e: any) { alert("Error deleting: " + e.message); }
   };
 
   const handleEdit = (item: any) => {
@@ -115,27 +115,24 @@ export const CreateJob = () => {
     navigate("/edit-requirement", { state: { reqIndex: index } });
   };
 
+  // --- COLUMNS DEFINITION ---
+  const jobColumns: Column<any>[] = [
+      { key: "title", header: "Job Title", render: (j) => <strong>{j.title}</strong> },
+      { key: "company", header: "Company" }
+  ];
+
   if (view === "list") {
     return (
       <div className="page-container">
-        <div className="card-header">
-          <h2>Your Jobs</h2>
-          <button onClick={() => { setEditingItem(null); setView("form"); }} className="btn-primary">+ Create Job</button>
-        </div>
-        <table className="data-table">
-          <thead><tr><th>Job Title</th><th>Company</th><th style={{textAlign: "right"}}>Actions</th></tr></thead>
-          <tbody>
-            {jobs.map(j => (
-              <tr key={j.id} onClick={()=>handleEdit(j)} style={{ cursor: "pointer" }}>
-                <td><strong>{j.title}</strong></td>
-                <td>{j.company}</td>
-                <td style={{textAlign: "right"}}>
-                  <button onClick={(e) => { e.stopPropagation(); handleDelete(j.id); }} className="btn-ghost" style={{color: "var(--danger)"}}>Delete</button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <DataTable 
+            title="Your Jobs"
+            data={jobs}
+            columns={jobColumns}
+            onRowClick={handleEdit}
+            onDelete={handleDelete}
+            onAdd={() => { setEditingItem(null); setView("form"); }}
+            addButtonLabel="+ Create Job"
+        />
       </div>
     );
   }
