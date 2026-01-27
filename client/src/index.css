@@ -26,8 +26,8 @@
   --border-color: #e2e8f0;
   
   /* --- Toggle Switch Colors (Light Mode) --- */
-  --toggle-track: #bae6fd;  /* Sky 200 */
-  --toggle-knob-sun: #fbbf24; /* Amber 400 */
+  --toggle-track: #c7d2fe;  /* Indigo 200 (Matches Primary Palette) */
+  --toggle-knob-sun: #ffda00; /* Brighter Yellow */
   --toggle-knob-moon: #f4f4f5; /* Zinc 100 */
 }
 
@@ -435,5 +435,6 @@ input:checked + .toggle-slider:before {
 }
 
 input:checked + .toggle-slider:after {
-  transform: scale(1.3) translate(-6px, 2px);
+  /* Offset reduced to bring shadow closer to center */
+  transform: scale(1.3) translate(-4px, -2px); 
 }

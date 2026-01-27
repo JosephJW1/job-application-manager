@@ -58,7 +58,8 @@ const Navbar = () => {
         </Link>
         <div className="nav-links">
 
-          <a href="/add-job" onClick={(e) => handleNavClick(e, "/")} className="nav-link">Jobs</a>
+          {/* UPDATED LINK */}
+          <a href="/" onClick={(e) => handleNavClick(e, "/")} className="nav-link">Jobs</a>
           {!authState.status ? (
             <>
               <Link to="/login" className="nav-link">Login</Link>

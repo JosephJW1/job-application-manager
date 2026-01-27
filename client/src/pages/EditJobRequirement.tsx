@@ -41,7 +41,7 @@ export const EditJobRequirement = () => {
       setJobDraft(JSON.parse(storedDraft));
     } else {
       alert("No job draft found. Returning to Job list.");
-      navigate("/add-job");
+      navigate("/"); // UPDATED LINK
     }
 
     if (location.state?.reqIndex !== undefined) {
@@ -71,7 +71,7 @@ export const EditJobRequirement = () => {
         location: "", 
         position: "", 
         duration: "", 
-        SkillDemonstrations: [] // Updated to match backend property
+        SkillDemonstrations: [] 
     };
     
     setExperiences(prev => [...prev, newExp]);
@@ -136,7 +136,6 @@ export const EditJobRequirement = () => {
             return {
                 ...e,
                 SkillDemonstrations: (e.SkillDemonstrations || []).map((d: any) => {
-                    // Match by SkillId (flat) or Skill.id (nested)
                     const currentId = d.SkillId || (d.Skill ? d.Skill.id : null);
                     if (currentId === skillId) {
                         return { ...d, explanation: newExplanation };
@@ -225,7 +224,6 @@ export const EditJobRequirement = () => {
           const tempExp = experiences.find(e => e.id === tempId);
           if (tempExp) {
              const { id, SkillDemonstrations, DemonstratedSkills, ...payload } = tempExp;
-             // Handle both property names
              const skills = SkillDemonstrations || DemonstratedSkills || [];
              const skillPayload = skills.map((s: any) => ({
                  skillId: s.Skill ? s.Skill.id : s.SkillId,
@@ -264,7 +262,7 @@ export const EditJobRequirement = () => {
 
   const handleReturn = (isDirty: boolean) => {
     if (isDirty && !window.confirm("You have unsaved changes. Return without saving?")) return;
-    navigate("/add-job", { state: { returnFromReq: true } });
+    navigate("/", { state: { returnFromReq: true } }); // UPDATED LINK
   };
 
   const handleSwitchReq = (newIndex: number, isDirty: boolean, resetForm: any) => {
@@ -324,7 +322,6 @@ export const EditJobRequirement = () => {
                }
            };
 
-           // --- NEW: Save individual temp experience ---
            const handleSaveTempExperience = async (tempId: number) => {
                const exp = experiences.find(e => e.id === tempId);
                if (!exp) return;
@@ -346,10 +343,8 @@ export const EditJobRequirement = () => {
                    const newId = response.data.id;
                    const savedExp = response.data;
 
-                   // 1. Update list (replace temp with real)
                    setExperiences(prev => prev.map(e => e.id === tempId ? savedExp : e));
 
-                   // 2. Update Formik matches references
                    const newReqs = values.requirements.map((req: any) => ({
                        ...req,
                        matches: (req.matches || []).map((m: any) => 
@@ -369,7 +364,6 @@ export const EditJobRequirement = () => {
               <FormObserver />
               <div className="card edit-mode-container" style={{ borderColor: "var(--primary)" }}>
                   
-                  {/* --- 2-STATE REQUIREMENT SELECTOR --- */}
                   <div style={{
                       display: "flex", 
                       flexDirection: "column",
@@ -514,7 +508,6 @@ export const EditJobRequirement = () => {
                         
                         await deleteGlobalSkill(id);
                         
-                        // Check if deleted skill was selected in this field and remove it
                         const currentIds = values.requirements[reqIndex].skillIds || [];
                         if (currentIds.includes(id)) {
                              setFieldValue(`requirements.${reqIndex}.skillIds`, currentIds.filter((sid: any) => sid !== id));
@@ -569,12 +562,12 @@ export const EditJobRequirement = () => {
 
                           headerContent={
                             <div style={{ display: "flex", gap: "15px", alignItems: "center", marginBottom: 0 }}>
-                                <label style={{ display: "flex", alignItems: "center", fontSize: "0.85rem", cursor: "pointer", marginBottom: 0, fontWeight: "normal", color: "var(--text-muted)" }}>
-                                    <input type="checkbox" checked={filterByRelatedSkills} onChange={(e) => setFilterByRelatedSkills(e.target.checked)} style={{ width: "auto", marginBottom: 0, marginRight: "6px" }} />
+                                <label style={{ display: "flex", flexDirection: "row", alignItems: "center", fontSize: "0.85rem", cursor: "pointer", marginBottom: 0, fontWeight: "normal", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                                    <input type="checkbox" checked={filterByRelatedSkills} onChange={(e) => setFilterByRelatedSkills(e.target.checked)} style={{ width: "auto", marginBottom: 0, marginRight: "6px", flexShrink: 0 }} />
                                     Filter by Related Skills
                                 </label>
-                                <label style={{ display: "flex", alignItems: "center", fontSize: "0.85rem", cursor: "pointer", marginBottom: 0, fontWeight: "normal", color: "var(--text-muted)" }}>
-                                    <input type="checkbox" checked={filterByAllSkills} onChange={(e) => { setFilterByAllSkills(e.target.checked); if (e.target.checked) setFilterByRelatedSkills(true); }} style={{ width: "auto", marginBottom: 0, marginRight: "6px" }} />
+                                <label style={{ display: "flex", flexDirection: "row", alignItems: "center", fontSize: "0.85rem", cursor: "pointer", marginBottom: 0, fontWeight: "normal", color: "var(--text-muted)", whiteSpace: "nowrap" }}>
+                                    <input type="checkbox" checked={filterByAllSkills} onChange={(e) => { setFilterByAllSkills(e.target.checked); if (e.target.checked) setFilterByRelatedSkills(true); }} style={{ width: "auto", marginBottom: 0, marginRight: "6px", flexShrink: 0 }} />
                                     Filter by ALL Skills
                                 </label>
                             </div>

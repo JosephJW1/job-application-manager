@@ -300,8 +300,11 @@ export const SearchableDropdown = ({
 };
 
 export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated, onSkillChange, onGlobalSkillRename, onGlobalSkillDelete, onEnsureRelatedSkill }: any) => {
-  // FIX: Hooks must run unconditionally. Calculate data first, but handle nulls safely within hooks.
-  
+  const [skillColWidth, setSkillColWidth] = useState<number | null>(null);
+  const draggingRef = useRef(false);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(0);
+
   const selectedExp = useMemo(() => {
       if (!experienceId || !experiences) return null;
       return experiences.find((e: any) => e.id.toString() === experienceId.toString());
@@ -347,6 +350,28 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   useEffect(() => {
     setLocalAddedSkills([]);
   }, [relatedSkillIds]);
+
+  // Resizing Logic
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!draggingRef.current) return;
+        const delta = e.clientX - startXRef.current;
+        const newWidth = Math.max(100, startWidthRef.current + delta); // Min width 100px
+        setSkillColWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+        if (draggingRef.current) {
+            draggingRef.current = false;
+            document.body.style.cursor = "default";
+        }
+    };
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
+    return () => {
+        document.removeEventListener("mousemove", handleMouseMove);
+        document.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, []);
 
   const visibleSkills = useMemo(() => {
       let filtered = displaySkills;
@@ -414,7 +439,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   };
 
   const handleAddNew = async () => {
-    if (!selectedExp) return; // Guard
+    if (!selectedExp) return; 
     if (!newSkillId || !onAddSkillDemo) return;
     setIsAdding(true);
     
@@ -466,9 +491,10 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
       setSelectedDemos([]);
   };
 
-  const gridCols = "35px 180px 1fr auto";
+  // --- DYNAMIC GRID COLUMNS ---
+  // Default to 1fr 1fr (half and half) if width is not set
+  const gridCols = `35px ${skillColWidth ? `${skillColWidth}px` : "1fr"} 1fr auto`;
 
-  // --- FINAL CHECK: NOW we can return null if no experience is selected, because hooks have run.
   if (!selectedExp) return null;
 
   return (
@@ -498,7 +524,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
           </div>
       </div>
 
-      {/* HEADER ROW WITH SEARCH */}
+      {/* HEADER ROW WITH SEARCH AND RESIZER */}
       <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: "8px", alignItems: "end", marginBottom: "8px", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: "8px" }}>
               <input 
@@ -509,7 +535,9 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                 disabled={visibleSkills.length === 0}
               />
           </div>
-          <div>
+          
+          {/* SKILL COLUMN HEADER WITH RESIZER */}
+          <div style={{ position: "relative" }}>
               <label style={{ fontSize: "0.75rem", fontWeight: "bold", color: "var(--text-muted)", marginBottom: "2px" }}>Skill</label>
               <input 
                 value={skillSearch} 
@@ -517,7 +545,39 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                 placeholder="Filter Skills..." 
                 style={{ width: "100%", fontSize: "0.85rem", padding: "4px 8px", height: "32px", marginBottom: 0 }} 
               />
+              {/* Draggable Divider Handle */}
+              <div 
+                  onMouseDown={(e) => {
+                      draggingRef.current = true;
+                      startXRef.current = e.clientX;
+                      // If width is null (default), get actual current pixel width to start dragging smoothly
+                      if (skillColWidth === null) {
+                         const parentEl = e.currentTarget.parentElement;
+                         startWidthRef.current = parentEl ? parentEl.offsetWidth : 180;
+                      } else {
+                         startWidthRef.current = skillColWidth;
+                      }
+                      document.body.style.cursor = "col-resize";
+                      e.preventDefault();
+                  }}
+                  style={{ 
+                      position: "absolute", 
+                      right: "-6px", 
+                      top: 0, 
+                      bottom: 0, 
+                      width: "8px", 
+                      cursor: "col-resize", 
+                      zIndex: 10,
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center"
+                  }}
+                  title="Drag to resize"
+              >
+                  <div style={{ width: "1px", height: "100%", background: "var(--border-color)" }} />
+              </div>
           </div>
+
           <div>
               <label style={{ fontSize: "0.75rem", fontWeight: "bold", color: "var(--text-muted)", marginBottom: "2px" }}>Explanation</label>
               <input 

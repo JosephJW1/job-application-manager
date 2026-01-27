@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { Formik, Form, Field, FieldArray } from "formik";
+import { Formik, Form } from "formik";
 import { useNavigate, useLocation } from "react-router-dom";
 import api from "../api";
 import { useFormState } from "../context/FormStateContext";
-import { FormObserver, SearchableDropdown } from "./JobFormComponents";
-import { DataTable, type Column } from "../components/DataTable"; // FIXED: Type import
+import { FormObserver } from "./JobFormComponents";
+import { DataTable, type Column } from "../components/DataTable"; 
+import { ExperienceEditor } from "../components/ExperienceEditor"; 
 
 export const CreateExperience = () => {
   const [view, setView] = useState<"list" | "form">("list");
@@ -27,7 +28,6 @@ export const CreateExperience = () => {
 
   useEffect(() => { fetchData(); }, []);
 
-  // --- ACTIONS FOR SKILL DROPDOWN ---
   const updateSkill = async (id: number, newTitle: string) => {
     try {
       await api.put(`/lists/skills/${id}`, { title: newTitle });
@@ -36,18 +36,17 @@ export const CreateExperience = () => {
   };
 
   const deleteGlobalSkill = async (id: number) => {
-    if (!window.confirm("Warning: You are about to delete this skill globally (from all experiences and requirements).\n\nAre you sure?")) return;
+    if (!window.confirm("Warning: You are about to delete this skill globally.")) return;
     try {
         await api.delete(`/lists/skills/${id}`);
         fetchData();
-    } catch (e: any) { alert("Error deleting skill: " + (e.response?.data?.error || e.message)); }
+    } catch (e: any) { alert("Error deleting skill: " + e.message); }
   };
 
   const handleSkillCreated = (newSkill: any) => {
      setAvailableSkills(prev => [...prev, newSkill]);
   };
 
-  // --- NAV RESET LOGIC ---
   useEffect(() => {
     if (location.state?.resetView) {
       navigate(location.pathname, { replace: true, state: {} });
@@ -59,7 +58,6 @@ export const CreateExperience = () => {
     }
   }, [location.state, view, setIsDirty, navigate, location.pathname]);
 
-  // --- DETECT SUB-FORM MODE ---
   useEffect(() => {
     if (location.state?.returnPath || location.state?.initialTitle) {
       setView("form");
@@ -70,7 +68,7 @@ export const CreateExperience = () => {
           location: "",
           position: "",
           duration: "",
-          skillDemonstrations: [] 
+          SkillDemonstrations: [] 
         });
       }
     }
@@ -82,14 +80,7 @@ export const CreateExperience = () => {
     else if (location.state?.newId && location.state?.targetField) {
       const draft = sessionStorage.getItem("exp_form_draft");
       if (draft) {
-        const parsedDraft = JSON.parse(draft);
-        const { targetField, newId } = location.state;
-        if (targetField.includes("skillId")) {
-           const parts = targetField.split('.');
-           const index = parseInt(parts[1]);
-           if (parsedDraft.skillDemonstrations[index]) parsedDraft.skillDemonstrations[index].skillId = newId;
-        }
-        setEditingItem(parsedDraft);
+        setEditingItem(JSON.parse(draft));
         setView("form");
         sessionStorage.removeItem("exp_form_draft");
         window.history.replaceState({}, document.title);
@@ -99,11 +90,21 @@ export const CreateExperience = () => {
 
   const onSubmit = async (values: any) => {
     try {
+      const payload = {
+          ...values,
+          skillDemonstrations: (values.SkillDemonstrations || []).map((d: any) => ({
+              skillId: d.Skill ? d.Skill.id : (d.SkillId || d.skillId),
+              explanation: d.explanation || d.ExpSkillDemo?.explanation || ""
+          }))
+      };
+
       let res;
       if (editingItem && editingItem.id) {
-         await api.put(`/experiences/${editingItem.id}`, values);
+         await api.put(`/experiences/${editingItem.id}`, payload);
          res = { data: editingItem };
-      } else { res = await api.post("/experiences", values); }
+      } else { 
+         res = await api.post("/experiences", payload); 
+      }
 
       setIsDirty(false);
 
@@ -130,23 +131,18 @@ export const CreateExperience = () => {
     } catch(e: any) { alert("Error deleting: " + e.message); }
   };
 
-  const handleCreate = () => { setEditingItem(null); setView("form"); };
+  const handleCreate = () => { 
+      setEditingItem({ title: "", description: "", location: "", position: "", duration: "", SkillDemonstrations: [] }); 
+      setView("form"); 
+  };
   
   const handleEdit = (item: any) => {
-    let mappedDemos = [];
-    if (item.SkillDemonstrations) {
-      mappedDemos = item.SkillDemonstrations.map((demo: any) => ({
-        skillId: demo.SkillId || "", 
-        explanation: demo.explanation || ""
-      }));
-    }
-
-    const formattedItem = { ...item, skillDemonstrations: mappedDemos };
-    setEditingItem(formattedItem);
+    let demos = item.SkillDemonstrations || item.skillDemonstrations || [];
+    setEditingItem({ ...item, SkillDemonstrations: demos });
     setView("form");
   };
   
-  const initialValues = editingItem || { title: "", description: "", location: "", position: "", duration: "", skillDemonstrations: [] };
+  const initialValues = editingItem || { title: "", description: "", location: "", position: "", duration: "", SkillDemonstrations: [] };
 
   const handleBack = () => {
     if (location.state?.returnPath) {
@@ -156,11 +152,9 @@ export const CreateExperience = () => {
     }
   };
 
-  // --- COLUMNS ---
   const expColumns: Column<any>[] = [
       { key: "title", header: "Title", render: (exp) => <strong>{exp.title}</strong> },
       { key: "position", header: "Position", render: (exp) => exp.position || "-" },
-      // UPDATED: Changed from Description to Location
       { key: "location", header: "Location", render: (exp) => exp.location || "-" }
   ];
 
@@ -184,61 +178,64 @@ export const CreateExperience = () => {
     <div className="page-container">
       <button onClick={handleBack} className="btn-ghost" style={{ marginBottom: "1rem", paddingLeft: 0 }}>&larr; {location.state?.returnPath ? "Cancel & Return" : "Back"}</button>
       
-      {location.state?.returnPath && <div className="card" style={{background: "#eff6ff", border: "1px solid #bfdbfe", marginBottom: "20px", padding: "15px"}}><strong>Adding New Experience</strong><br/><small>Fill this out to select it for your Job Requirement.</small></div>}
+      {location.state?.returnPath && <div className="card" style={{background: "var(--bg-selected)", border: "1px solid var(--border-color)", marginBottom: "20px", padding: "15px"}}><strong>Adding New Experience</strong><br/><small>Fill this out to select it for your Job Requirement.</small></div>}
       
       <div className="card">
-        <h2 style={{marginTop: 0}}>{editingItem ? "Edit Experience" : "Add Experience"}</h2>
         <Formik initialValues={initialValues} enableReinitialize onSubmit={onSubmit}>
-          {({ values }) => (
+          {({ values, setFieldValue }) => (
             <Form>
               <FormObserver />
               
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "10px" }}>
-                  <div>
-                    <label>Title / Project <span style={{color:'var(--danger)'}}>*</span></label>
-                    <Field name="title" required placeholder="e.g. Project Alpha" autoFocus />
-                  </div>
-                  <div>
-                    <label>Position / Role</label>
-                    <Field name="position" placeholder="e.g. Lead Developer" />
-                  </div>
-              </div>
+              <ExperienceEditor 
+                mode="standalone"
+                experience={values}
+                experiences={experiences} 
+                skills={availableSkills}
+                // Wrap to ignore Formik Errors return type and ensure void Promise
+                onUpdate={async (field, val) => { await setFieldValue(field, val); }}
+                handlers={{
+                    // Use _ prefix to ignore unused expId arg
+                    onSkillDemoUpdate: (_expId, skillId, explanation) => {
+                        const demos = [...(values.SkillDemonstrations || [])];
+                        const idx = demos.findIndex(d => (d.SkillId || d.Skill?.id) === skillId);
+                        if (idx >= 0) {
+                            demos[idx] = { ...demos[idx], explanation, ExpSkillDemo: { explanation } };
+                            setFieldValue("SkillDemonstrations", demos);
+                        }
+                    },
+                    onAddSkillDemo: (_expId, skillId, explanation) => {
+                        const skillObj = availableSkills.find(s => s.id === skillId);
+                        if (!skillObj) return Promise.resolve(); // Must return Promise, not undefined
+                        const newDemo = { 
+                            id: -Date.now(), 
+                            SkillId: skillId, 
+                            Skill: skillObj, 
+                            explanation,
+                            ExpSkillDemo: { explanation }
+                        };
+                        setFieldValue("SkillDemonstrations", [...(values.SkillDemonstrations || []), newDemo]);
+                        return Promise.resolve(false);
+                    },
+                    onDeleteSkillDemo: (_expId, skillId) => {
+                        if (!skillId) return; 
+                        const demos = (values.SkillDemonstrations || []).filter((d: any) => (d.SkillId || d.Skill?.id) !== skillId);
+                        setFieldValue("SkillDemonstrations", demos);
+                    },
+                    onGlobalSkillCreated: handleSkillCreated,
+                    onGlobalSkillRename: updateSkill,
+                    onGlobalSkillDelete: deleteGlobalSkill,
+                    onSkillChange: (demoId, newSkillId) => {
+                        const demos = [...(values.SkillDemonstrations || [])];
+                        const idx = demos.findIndex(d => d.id === demoId);
+                        if(idx >= 0) {
+                             const skillObj = availableSkills.find(s => s.id === newSkillId);
+                             demos[idx] = { ...demos[idx], SkillId: newSkillId, Skill: skillObj };
+                             setFieldValue("SkillDemonstrations", demos);
+                        }
+                    }
+                }}
+              />
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "10px" }}>
-                  <div>
-                    <label>Location</label>
-                    <Field name="location" placeholder="e.g. New York, NY" />
-                  </div>
-                  <div>
-                    <label>Duration</label>
-                    <Field name="duration" placeholder="e.g. Jan 2020 - Dec 2021" />
-                  </div>
-              </div>
-
-              <label>Description</label>
-              <Field name="description" as="textarea" rows={4} placeholder="What did you do?" />
-
-              <h3 style={{ borderBottom: "1px solid #e2e8f0", paddingBottom: "10px" }}>Skills Used</h3>
-              <FieldArray name="skillDemonstrations">
-                {({ push, remove }) => (
-                  <div>
-                    {values.skillDemonstrations.map((item: any, index: number) => {
-                      const isOrphan = !item.skillId && item.explanation;
-                      return (
-                        <div key={index} style={{ display: "grid", gridTemplateColumns: "1fr 2fr auto", gap: "10px", alignItems: "start", marginBottom: "10px", borderBottom: "1px solid #f1f5f9", paddingBottom: "10px", background: isOrphan ? "#fff5f5" : "transparent", border: isOrphan ? "2px solid #fc8181" : "none", padding: isOrphan ? "10px" : "0 0 10px 0", borderRadius: isOrphan ? "6px" : "0" }}>
-                          {isOrphan && <div style={{ gridColumn: "1 / -1", color: "#e53e3e", fontSize: "0.9rem", fontWeight: "bold", marginBottom: "5px" }}>⚠ This skill was deleted. Please select a replacement to save this explanation.</div>}
-                          <div style={{ position: "relative" }}>
-                            <SearchableDropdown name={`skillDemonstrations.${index}.skillId`} placeholder={isOrphan ? "Select Replacement..." : "Select Skill..."} options={availableSkills} createEndpoint="/lists/skills" onOptionCreated={handleSkillCreated} onRename={updateSkill} onDeleteOption={deleteGlobalSkill} />
-                          </div>
-                          <Field name={`skillDemonstrations.${index}.explanation`} placeholder="How did you use this skill?" as="textarea" rows={1} style={{ borderColor: isOrphan ? "#fc8181" : "#ccc", height: "38px" }} />
-                          <button type="button" onClick={() => remove(index)} className="btn-ghost" style={{color: "var(--danger)", padding: "5px", marginTop: "5px"}}>×</button>
-                        </div>
-                      );
-                    })}
-                    <button type="button" onClick={() => push({ skillId: "", explanation: "" })} className="btn-secondary" style={{width: "100%", marginTop: "10px"}}>+ Add Skill Link</button>
-                  </div>
-                )}
-              </FieldArray>
               <div style={{ marginTop: "30px", paddingTop: "20px", borderTop: "1px solid #e2e8f0" }}>
                 <button type="submit" className="btn-primary" style={{ width: "100%", padding: "1rem", fontSize: "1rem" }}>{editingItem && editingItem.id ? "Save Changes" : "Create & Select"}</button>
               </div>
