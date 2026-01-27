@@ -54,7 +54,7 @@ const Navbar = () => {
     return (
       <nav className="nav-bar">
         <Link to="/" style={{ fontSize: "1.2rem", fontWeight: "bold", color: "var(--primary)" }}>
-          Cov<span style={{color: "var(--text-main)"}}>Lette</span>
+          Cover<span style={{color: "var(--text-main)"}}>Lette</span>
         </Link>
         <div className="nav-links">
 
@@ -76,7 +76,7 @@ const Navbar = () => {
               }} className="btn-secondary" style={{padding: "0.4rem 1rem"}}>Logout</button>
             </>
           )}
-          
+
           {/* --- Theme Toggle Switch --- */}
           <label className="toggle-switch" title="Toggle Dark Mode">
             <input 

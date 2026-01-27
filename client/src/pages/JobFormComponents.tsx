@@ -163,7 +163,9 @@ export const SearchableDropdown = ({
       const canCreate = !!onCreate || !!createEndpoint;
       if (canCreate) {
           if (onCreate) {
-             onCreate(search);
+             const result = await onCreate(search);
+             if (result === false) return; 
+
              setSearch("");
              setIsOpen(false);
              if (inputRef.current) inputRef.current.blur();
@@ -224,9 +226,7 @@ export const SearchableDropdown = ({
       />
       
       {isOpen && (
-        // FIX: Removed maxHeight and overflowY from here. 
-        // The internal <ItemList> (via .item-list CSS class) now handles the scrolling.
-        <div style={{ position: "absolute", zIndex: 100, width: "100%", background: "white", borderRadius: "8px", border: "1px solid #e2e8f0", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", marginTop: "4px" }}>
+        <div style={{ position: "absolute", zIndex: 100, width: "100%", background: "var(--bg-surface)", borderRadius: "8px", border: "1px solid var(--border-color)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", marginTop: "4px" }}>
             <ItemList 
                 items={filteredOptions}
                 selectedIds={selectedIds}
@@ -262,7 +262,7 @@ export const SearchableDropdown = ({
                       borderTopRightRadius: 0, 
                       borderBottomRightRadius: 0, 
                       borderRight: "none",
-                      background: "#e0e7ff",
+                      background: "var(--bg-selected)",
                       color: "var(--primary)",
                       fontWeight: 500,
                       fontSize: "0.85rem",
@@ -274,11 +274,11 @@ export const SearchableDropdown = ({
                     type="button" 
                     onClick={() => handleRemove(id)}
                     style={{
-                      border: "1px solid #cbd5e1",
-                      borderLeft: "1px solid rgba(0,0,0,0.1)",
+                      border: "1px solid var(--border-color)",
+                      borderLeft: "1px solid var(--border-color)",
                       borderTopLeftRadius: 0,
                       borderBottomLeftRadius: 0,
-                      background: "#e0e7ff",
+                      background: "var(--bg-selected)",
                       color: "var(--primary)",
                       cursor: "pointer",
                       padding: "0 8px",
@@ -299,12 +299,16 @@ export const SearchableDropdown = ({
   );
 };
 
-export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated, onSkillChange, onGlobalSkillRename, onGlobalSkillDelete }: any) => {
-  if (!experienceId) return null;
-  const selectedExp = experiences.find((e: any) => e.id.toString() === experienceId.toString());
-  if (!selectedExp) return null;
+export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated, onSkillChange, onGlobalSkillRename, onGlobalSkillDelete, onEnsureRelatedSkill }: any) => {
+  // FIX: Hooks must run unconditionally. Calculate data first, but handle nulls safely within hooks.
+  
+  const selectedExp = useMemo(() => {
+      if (!experienceId || !experiences) return null;
+      return experiences.find((e: any) => e.id.toString() === experienceId.toString());
+  }, [experienceId, experiences]);
   
   const displaySkills = useMemo(() => {
+    if (!selectedExp) return [];
     if (selectedExp.SkillDemonstrations) {
       return selectedExp.SkillDemonstrations
         .map((d: any) => {
@@ -332,57 +336,229 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   const [newExplanation, setNewExplanation] = useState("");
   const [isAdding, setIsAdding] = useState(false);
   const [changingSkillDemoId, setChangingSkillDemoId] = useState<number | string | null>(null);
+  
+  // Search & Selection States
+  const [skillSearch, setSkillSearch] = useState("");
+  const [explSearch, setExplSearch] = useState("");
+  const [selectedDemos, setSelectedDemos] = useState<any[]>([]); 
+  const [localAddedSkills, setLocalAddedSkills] = useState<number[]>([]);
+  const [showAddForm, setShowAddForm] = useState(false); 
 
-  const visibleSkills = filterRelated 
-    ? displaySkills.filter((s: any) => {
-        if (s.isOrphan) return true;
-        return relatedSkillIds && relatedSkillIds.includes(s.id.toString());
-    })
-    : displaySkills;
+  useEffect(() => {
+    setLocalAddedSkills([]);
+  }, [relatedSkillIds]);
+
+  const visibleSkills = useMemo(() => {
+      let filtered = displaySkills;
+
+      if (filterRelated) {
+          filtered = filtered.filter((s: any) => {
+            if (s.isOrphan) return true;
+            if (localAddedSkills.includes(s.id)) return true;
+            return relatedSkillIds && relatedSkillIds.includes(s.id.toString());
+          });
+      }
+
+      if (skillSearch || explSearch) {
+          const lowerSkill = skillSearch.toLowerCase();
+          const lowerExpl = explSearch.toLowerCase();
+          filtered = filtered.filter((s: any) => {
+              const skillMatch = s.title?.toLowerCase().includes(lowerSkill);
+              const explMatch = (s.ExpSkillDemo?.explanation || "").toLowerCase().includes(lowerExpl);
+              return skillMatch && explMatch;
+          });
+      }
+
+      return filtered;
+  }, [displaySkills, filterRelated, relatedSkillIds, localAddedSkills, skillSearch, explSearch]);
 
   const availableSkills = (allSkills || []).filter((s: any) => !displaySkills.find((es: any) => es.id === s.id && !es.isOrphan));
 
+  const handlePotentialConflict = async (title: string) => {
+      const conflict = displaySkills.find((s: any) => s.title.toLowerCase() === title.toLowerCase());
+      if (!conflict) return false;
+
+      const isRelated = relatedSkillIds && relatedSkillIds.includes(conflict.id.toString());
+      
+      if (isRelated) {
+          alert(`The skill "${conflict.title}" is already in use on this experience.`);
+      } else {
+          if (window.confirm(`The skill "${conflict.title}" is already in use on this experience.\n\nDo you want to add it to the Requirement's Related Skills instead of creating a duplicate?`)) {
+              if (onEnsureRelatedSkill) {
+                  await onEnsureRelatedSkill(conflict.id);
+                  setLocalAddedSkills(prev => [...prev, conflict.id]); 
+              }
+          }
+      }
+      return true; 
+  };
+
+  const handleCreateAndSelect = async (val: string, forRowId: number | null = null, currentDemoId: number | string | null = null) => {
+      if (await handlePotentialConflict(val)) return false;
+
+      try {
+          const res = await api.post("/lists/skills", { title: val });
+          if (onGlobalSkillCreated) onGlobalSkillCreated(res.data);
+          
+          if (forRowId !== null && currentDemoId !== null) {
+              if (onSkillChange) onSkillChange(currentDemoId, res.data.id);
+              setChangingSkillDemoId(null);
+          } else {
+              setNewSkillId(res.data.id);
+          }
+          return true;
+      } catch (err: any) {
+          alert("Error creating skill: " + err.message);
+          return false;
+      }
+  };
+
   const handleAddNew = async () => {
+    if (!selectedExp) return; // Guard
     if (!newSkillId || !onAddSkillDemo) return;
     setIsAdding(true);
-    await onAddSkillDemo(selectedExp.id, newSkillId, newExplanation);
+    
+    const isRelated = await onAddSkillDemo(selectedExp.id, newSkillId, newExplanation);
+    
+    if (isRelated === true) {
+        setLocalAddedSkills(prev => [...prev, newSkillId]);
+    }
+    
     setNewSkillId(null);
     setNewExplanation("");
     setIsAdding(false);
+    setShowAddForm(false); 
   };
+
+  const handleCancelAdd = () => {
+      setNewSkillId(null);
+      setNewExplanation("");
+      setIsAdding(false);
+      setShowAddForm(false);
+  };
+
+  const handleToggleSelect = (id: any) => {
+      setSelectedDemos(prev => {
+          if (prev.includes(id)) return prev.filter(i => i !== id);
+          return [...prev, id];
+      });
+  };
+
+  const handleSelectAll = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.checked) {
+          setSelectedDemos(visibleSkills.map((s: any) => s.id));
+      } else {
+          setSelectedDemos([]);
+      }
+  };
+
+  const handleBulkDelete = async () => {
+      if (!selectedExp) return;
+      if (selectedDemos.length === 0) return;
+      if (!window.confirm(`Delete ${selectedDemos.length} selected skills?`)) return;
+
+      for (const id of selectedDemos) {
+          const skill = displaySkills.find((s: any) => s.id === id);
+          if (skill && onDeleteSkillDemo) {
+              await onDeleteSkillDemo(selectedExp.id, skill.isOrphan ? null : skill.id);
+          }
+      }
+      setSelectedDemos([]);
+  };
+
+  const gridCols = "35px 180px 1fr auto";
+
+  // --- FINAL CHECK: NOW we can return null if no experience is selected, because hooks have run.
+  if (!selectedExp) return null;
 
   return (
     <div style={{ marginTop: "20px" }}> 
-      <label style={{marginBottom: "10px", display: "block"}}>Skill Demonstrations</label>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+          <label style={{marginBottom: 0, display: "block"}}>Skill Demonstrations</label>
+          <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
+              {selectedDemos.length > 0 && (
+                  <button 
+                    type="button"
+                    onClick={handleBulkDelete}
+                    className="btn-ghost"
+                    style={{ color: "var(--danger)", border: "1px solid var(--danger)", background: "rgba(239, 68, 68, 0.1)", padding: "4px 12px", fontSize: "0.85rem" }}
+                  >
+                      Delete Selected ({selectedDemos.length})
+                  </button>
+              )}
+              <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", cursor: "pointer", marginBottom: 0, display: "flex", alignItems: "center" }}>
+                <input 
+                    type="checkbox" 
+                    checked={filterRelated} 
+                    onChange={e => setFilterRelated(e.target.checked)} 
+                    style={{ width: "auto", margin: "0 6px 0 0", marginBottom: 0 }} 
+                />
+                Show only Related Skills
+              </label>
+          </div>
+      </div>
 
-      <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", cursor: "pointer", marginBottom: "8px", display: "flex", alignItems: "center" }}>
-           <input 
-             type="checkbox" 
-             checked={filterRelated} 
-             onChange={e => setFilterRelated(e.target.checked)} 
-             style={{ width: "auto", margin: "0 6px 0 0", marginBottom: 0 }} 
-           />
-           Show only Related Skills
-      </label>
+      {/* HEADER ROW WITH SEARCH */}
+      <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: "8px", alignItems: "end", marginBottom: "8px", borderBottom: "1px solid var(--border-color)", paddingBottom: "8px" }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", paddingBottom: "8px" }}>
+              <input 
+                type="checkbox" 
+                checked={visibleSkills.length > 0 && selectedDemos.length === visibleSkills.length}
+                onChange={handleSelectAll}
+                style={{ width: "auto", marginBottom: 0 }}
+                disabled={visibleSkills.length === 0}
+              />
+          </div>
+          <div>
+              <label style={{ fontSize: "0.75rem", fontWeight: "bold", color: "var(--text-muted)", marginBottom: "2px" }}>Skill</label>
+              <input 
+                value={skillSearch} 
+                onChange={(e) => setSkillSearch(e.target.value)} 
+                placeholder="Filter Skills..." 
+                style={{ width: "100%", fontSize: "0.85rem", padding: "4px 8px", height: "32px", marginBottom: 0 }} 
+              />
+          </div>
+          <div>
+              <label style={{ fontSize: "0.75rem", fontWeight: "bold", color: "var(--text-muted)", marginBottom: "2px" }}>Explanation</label>
+              <input 
+                value={explSearch} 
+                onChange={(e) => setExplSearch(e.target.value)} 
+                placeholder="Filter Explanations..." 
+                style={{ width: "100%", fontSize: "0.85rem", padding: "4px 8px", height: "32px", marginBottom: 0 }} 
+              />
+          </div>
+          <div style={{ width: "34px" }}></div>
+      </div>
 
       <div style={{ display: "grid", gap: "8px" }}>
-        {visibleSkills.length > 0 ? visibleSkills.map((s: any) => (
-          <div key={s.id} style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: "8px", alignItems: "stretch" }}>
+        {visibleSkills.map((s: any) => (
+          <div key={s.id} style={{ display: "grid", gridTemplateColumns: gridCols, gap: "8px", alignItems: "stretch" }}>
+             
+             {/* CHECKBOX */}
+             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", background: "var(--bg-input)", border: "1px solid var(--border-color)", borderRadius: "4px" }}>
+                 <input 
+                    type="checkbox" 
+                    checked={selectedDemos.includes(s.id)} 
+                    onChange={() => handleToggleSelect(s.id)}
+                    style={{ width: "auto", marginBottom: 0, cursor: "pointer" }}
+                 />
+             </div>
+
              <div style={{ height: "100%", position: "relative" }}>
-                 
                  {changingSkillDemoId === s.demoId ? (
                      <div style={{ display: "flex", height: "100%", alignItems: "stretch" }}>
                          <div 
+                            onMouseDown={(e) => e.preventDefault()}
                             onClick={() => setChangingSkillDemoId(null)}
                             style={{
                                 display: "flex",
                                 alignItems: "center",
                                 justifyContent: "center",
                                 width: "30px",
-                                background: "#fef2f2",
-                                borderTop: "1px solid #fee2e2",
-                                borderBottom: "1px solid #fee2e2",
-                                borderLeft: "1px solid #fee2e2",
+                                background: "rgba(239, 68, 68, 0.1)",
+                                borderTop: "1px solid var(--danger)",
+                                borderBottom: "1px solid var(--danger)",
+                                borderLeft: "1px solid var(--danger)",
                                 borderRight: "none",
                                 borderTopLeftRadius: "4px",
                                 borderBottomLeftRadius: "4px",
@@ -399,7 +575,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                          <div style={{ flex: 1 }}>
                              <SearchableDropdown 
                                 autoFocus={true} 
-                                options={allSkills}
+                                options={allSkills?.filter((sk: any) => sk.id === s.id || !displaySkills.find((ds: any) => ds.id === sk.id && !ds.isOrphan)) || []}
                                 placeholder="Select Skill..."
                                 initialSearch={s.isOrphan ? "" : s.title} 
                                 initialValue={s.isOrphan ? undefined : s.id} 
@@ -408,7 +584,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                                     setChangingSkillDemoId(null);
                                 }}
                                 onCancel={() => setChangingSkillDemoId(null)} 
-                                createEndpoint="/lists/skills"
+                                onCreate={(val: string) => handleCreateAndSelect(val, s.id, s.demoId)}
                                 onOptionCreated={onGlobalSkillCreated}
                                 onRename={onGlobalSkillRename}
                                 onDeleteOption={async (id: number) => {
@@ -428,10 +604,10 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                                  alignItems: "center",
                                  justifyContent: "center",
                                  width: "30px",
-                                 background: "rgba(0,0,0,0.03)",
-                                 borderTop: "1px solid #cbd5e1",
-                                 borderBottom: "1px solid #cbd5e1",
-                                 borderLeft: "1px solid #cbd5e1",
+                                 background: "var(--bg-input)",
+                                 borderTop: "1px solid var(--border-color)",
+                                 borderBottom: "1px solid var(--border-color)",
+                                 borderLeft: "1px solid var(--border-color)",
                                  borderRight: "none",
                                  borderTopLeftRadius: "4px",
                                  borderBottomLeftRadius: "4px",
@@ -441,8 +617,8 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                                  transition: "background 0.2s"
                              }}
                              title="Change Associated Skill"
-                             onMouseEnter={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.08)"}
-                             onMouseLeave={(e) => e.currentTarget.style.background = "rgba(0,0,0,0.03)"}
+                             onMouseEnter={(e) => e.currentTarget.style.background = "var(--bg-hover)"}
+                             onMouseLeave={(e) => e.currentTarget.style.background = "var(--bg-input)"}
                          >
                              ▼
                          </div>
@@ -462,7 +638,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                                 flex: 1, 
                                 borderTopLeftRadius: 0, 
                                 borderBottomLeftRadius: 0,
-                                borderLeft: "1px solid rgba(0,0,0,0.1)" 
+                                borderLeft: "1px solid var(--border-color)" 
                             }}
                          />
                      </div>
@@ -482,8 +658,8 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                  height: "auto", 
                  fontSize: "0.9rem",
                  color: s.ExpSkillDemo?.explanation ? "inherit" : "#ccc",
-                 border: s.isOrphan ? "1px solid #fc8181" : undefined,
-                 background: s.isOrphan ? "#fff5f5" : undefined
+                 border: s.isOrphan ? "1px solid var(--danger)" : undefined,
+                 background: s.isOrphan ? "rgba(239, 68, 68, 0.05)" : undefined
                }}
              />
 
@@ -496,77 +672,114 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                         }
                     }}
                     className="btn-ghost"
-                    style={{ color: "var(--danger)", padding: "0 10px", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid #fee2e2", background: "#fef2f2" }}
+                    style={{ color: "var(--danger)", padding: "0 10px", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", border: "1px solid var(--danger)", background: "rgba(239, 68, 68, 0.1)" }}
                     title="Remove Skill from Experience"
                  >
                      🗑️
                  </button>
              )}
           </div>
-        )) : (
-            <div style={{ padding: "10px", textAlign: "center", color: "#999", fontSize: "0.9rem", border: "1px dashed #e2e8f0" }}>
-                {filterRelated ? "No related skills found." : "No skills added to this experience yet."}
+        ))}
+
+        {/* ADD NEW ROW / CREATE BUTTON */}
+        {showAddForm ? (
+            <div style={{ display: "grid", gridTemplateColumns: gridCols, gap: "8px", alignItems: "stretch" }}>
+                 
+                 {/* Empty cell for checkbox column */}
+                 <div></div>
+
+                 <div style={{ height: "100%" }}>
+                    <SearchableDropdown 
+                        options={availableSkills}
+                        onSelect={(id: number) => setNewSkillId(id)}
+                        onCreate={(val: string) => handleCreateAndSelect(val)}
+                        onOptionCreated={(newSkill: any) => { 
+                            if(onGlobalSkillCreated) onGlobalSkillCreated(newSkill); 
+                            setNewSkillId(newSkill.id);
+                        }}
+                        onRename={onGlobalSkillRename}
+                        onDeleteOption={onGlobalSkillDelete}
+                        placeholder={
+                            newSkillId 
+                            ? (allSkills?.find((s: any) => s.id === newSkillId)?.title || "Selected") 
+                            : "Select or Create..."
+                        }
+                        autoFocus={true} // Focus when opened
+                    />
+                 </div>
+
+                 <input 
+                     className="input" 
+                     placeholder={newSkillId ? "Enter explanation..." : "Select a skill first"} 
+                     value={newExplanation}
+                     onChange={(e) => setNewExplanation(e.target.value)}
+                     style={{ 
+                         marginBottom: 0, 
+                         height: "100%", 
+                         border: "1px solid var(--border-color)", 
+                         background: newSkillId ? "var(--bg-surface)" : "var(--bg-input)",
+                         fontSize: "0.9rem"
+                     }}
+                     disabled={!newSkillId}
+                     onKeyDown={(e) => { 
+                         if(e.key === "Enter") handleAddNew(); 
+                         if(e.key === "Escape") handleCancelAdd();
+                     }}
+                 />
+
+                 <div style={{ display: "flex", gap: "4px" }}>
+                     <button 
+                        type="button" 
+                        onClick={handleAddNew}
+                        className="btn-ghost"
+                        disabled={!newSkillId || isAdding}
+                        style={{ 
+                            color: "var(--success)", 
+                            padding: "0 10px", 
+                            height: "100%", 
+                            display: "flex", 
+                            alignItems: "center", 
+                            justifyContent: "center", 
+                            border: "1px solid var(--success)", 
+                            background: "rgba(16, 185, 129, 0.1)",
+                            opacity: !newSkillId ? 0.5 : 1,
+                            cursor: !newSkillId ? "not-allowed" : "pointer"
+                        }}
+                        title="Add to Experience"
+                     >
+                         {isAdding ? "..." : "✓"}
+                     </button>
+                     <button 
+                        type="button" 
+                        onClick={handleCancelAdd}
+                        className="btn-ghost"
+                        style={{ 
+                            color: "var(--danger)", 
+                            padding: "0 10px", 
+                            height: "100%", 
+                            display: "flex", 
+                            alignItems: "center", 
+                            justifyContent: "center", 
+                            border: "1px solid var(--danger)", 
+                            background: "rgba(239, 68, 68, 0.1)",
+                            cursor: "pointer"
+                        }}
+                        title="Cancel"
+                     >
+                         ✕
+                     </button>
+                 </div>
             </div>
-        )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: "8px", alignItems: "stretch" }}>
-             <div style={{ height: "100%" }}>
-                <SearchableDropdown 
-                    options={availableSkills}
-                    onSelect={(id: number) => setNewSkillId(id)}
-                    createEndpoint="/lists/skills" 
-                    onOptionCreated={(newSkill: any) => { 
-                        if(onGlobalSkillCreated) onGlobalSkillCreated(newSkill); 
-                        setNewSkillId(newSkill.id);
-                    }}
-                    onRename={onGlobalSkillRename}
-                    onDeleteOption={onGlobalSkillDelete}
-                    placeholder={
-                        newSkillId 
-                        ? (allSkills?.find((s: any) => s.id === newSkillId)?.title || "Selected") 
-                        : "Select or Create..."
-                    }
-                />
-             </div>
-
-             <input 
-                 className="input" 
-                 placeholder={newSkillId ? "Enter explanation..." : "Select a skill first"} 
-                 value={newExplanation}
-                 onChange={(e) => setNewExplanation(e.target.value)}
-                 style={{ 
-                     marginBottom: 0, 
-                     height: "100%", 
-                     border: "1px solid #cbd5e1", 
-                     background: newSkillId ? "white" : "#f1f5f9",
-                     fontSize: "0.9rem"
-                 }}
-                 disabled={!newSkillId}
-                 onKeyDown={(e) => { if(e.key === "Enter") handleAddNew(); }}
-             />
-
-             <button 
+        ) : (
+            <button 
                 type="button" 
-                onClick={handleAddNew}
-                className="btn-ghost"
-                disabled={!newSkillId || isAdding}
-                style={{ 
-                    color: "var(--success)", 
-                    padding: "0 10px", 
-                    height: "100%", 
-                    display: "flex", 
-                    alignItems: "center", 
-                    justifyContent: "center", 
-                    border: "1px solid #d1fae5", 
-                    background: "#ecfdf5",
-                    opacity: !newSkillId ? 0.5 : 1,
-                    cursor: !newSkillId ? "not-allowed" : "pointer"
-                }}
-                title="Add to Experience"
-             >
-                 {isAdding ? "..." : "✓"}
-             </button>
-        </div>
+                onClick={() => setShowAddForm(true)}
+                className="btn-secondary"
+                style={{ width: "100%", textAlign: "center", border: "1px dashed var(--border-color)", padding: "8px", color: "var(--text-muted)" }}
+            >
+                Create
+            </button>
+        )}
       </div>
     </div>
   );

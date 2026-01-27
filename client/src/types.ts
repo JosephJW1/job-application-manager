@@ -7,7 +7,8 @@ export interface Experience {
   location?: string; 
   position?: string; 
   duration?: string;
-  DemonstratedSkills?: any[];
+  DemonstratedSkills?: any[]; // Legacy/Frontend only
+  SkillDemonstrations?: any[]; // Matches Backend Alias
 }
 export interface JobTag { id: number; title: string; }
 
