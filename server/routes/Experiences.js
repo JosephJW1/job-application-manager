@@ -86,6 +86,15 @@ router.put("/demo/:id", validateToken, async (req, res) => {
   }
 });
 
+// DELETE SKILL DEMO BY ID (Primary Key)
+router.delete("/demo/:id", validateToken, async (req, res) => {
+  const { id } = req.params;
+  try {
+    await ExpSkillDemo.destroy({ where: { id: id } });
+    res.json({ message: "Deleted" });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // UPDATE SPECIFIC SKILL DEMONSTRATION EXPLANATION
 router.put("/:id/demo/:skillId", validateToken, async (req, res) => {
   const { id, skillId } = req.params;

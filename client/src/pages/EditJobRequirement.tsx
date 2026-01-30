@@ -230,8 +230,8 @@ export const EditJobRequirement = () => {
     } catch (e: any) { alert("Error adding skill: " + e.message); }
   };
 
-  const handleDeleteSkillDemonstration = async (expId: number, skillId: number | null) => {
-    if (!skillId) { alert("Cannot delete orphan via this button."); return; }
+  const handleDeleteSkillDemonstration = async (expId: number, skillId: number | null, demoId?: number) => {
+    if (!demoId && !skillId) { alert("Cannot delete orphan via this button (missing ID)."); return; }
     
     if (expId < 0) {
         setExperiences(prev => prev.map(e => {
@@ -239,6 +239,7 @@ export const EditJobRequirement = () => {
             return {
                 ...e,
                 SkillDemonstrations: (e.SkillDemonstrations || []).filter((d: any) => {
+                    if (demoId) return d.id !== demoId;
                     const currentId = d.SkillId || (d.Skill ? d.Skill.id : null);
                     return currentId !== skillId;
                 })
@@ -248,7 +249,11 @@ export const EditJobRequirement = () => {
     }
 
     try {
-        await api.delete(`/experiences/${expId}/demo/${skillId}`);
+        if (demoId && demoId > 0) {
+            await api.delete(`/experiences/demo/${demoId}`);
+        } else if (skillId) {
+            await api.delete(`/experiences/${expId}/demo/${skillId}`);
+        }
         await fetchLists();
     } catch (e: any) { alert("Error removing skill: " + e.message); }
   };

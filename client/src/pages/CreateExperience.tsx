@@ -240,6 +240,11 @@ export const CreateExperience = () => {
                 ? "Save Changes" 
                 : (location.state?.returnPath ? "Create & Select" : "Create Experience");
 
+            // NEW: Determine Return Label
+            const returnLabel = location.state?.returnPath === "/edit-requirement" 
+                ? "Return to Job Requirement" 
+                : "Return to Experiences";
+
             return (
                 <>
                     {/* TOP NAVIGATION */}
@@ -297,9 +302,8 @@ export const CreateExperience = () => {
                                     return Promise.resolve(false);
                                 },
                                 onDeleteSkillDemo: (_expId, skillId, demoId) => {
-                                    if (demoId !== undefined && demoId !== null) {
-                                        const demos = (values.SkillDemonstrations || []).filter((d: any) => d.id !== demoId);
-                                        setFieldValue("SkillDemonstrations", demos);
+                                    if (demoId) {
+                                        setFieldValue("SkillDemonstrations", (values.SkillDemonstrations || []).filter((d: any) => d.id !== demoId));
                                         return;
                                     }
                                     if (!skillId) return; 
@@ -333,7 +337,7 @@ export const CreateExperience = () => {
 
                         <div style={{ marginTop: "30px", paddingTop: "20px", borderTop: "1px solid #e2e8f0", display: "flex", gap: "10px" }}>
                             <button type="submit" className="btn-primary" style={{ flex: 1, padding: "1rem", fontSize: "1rem" }}>{submitLabel}</button>
-                            <button type="button" onClick={handleExit} className="btn-secondary" style={{ flex: 1 }}>Return to Experiences</button>
+                            <button type="button" onClick={handleExit} className="btn-secondary" style={{ flex: 1 }}>{returnLabel}</button>
                         </div>
                         </Form>
                     </div>
