@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useFormikContext } from "formik";
 import { useFormState } from "../context/FormStateContext";
 import api from "../api";
@@ -34,6 +35,7 @@ export const SearchableDropdown = ({
   const [isOpen, setIsOpen] = useState(false);
   const [filteredOptions, setFilteredOptions] = useState<any[]>([]);
   const [activeId, setActiveId] = useState<number | null>(null); 
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
   
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -55,6 +57,15 @@ export const SearchableDropdown = ({
   const selectedIds = useMemo(() => {
     return Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
   }, [rawValue]);
+
+  // NEW: Calculate joined string of selected titles for placeholder
+  const selectedDisplay = useMemo(() => {
+      if (selectedIds.length === 0 || !options) return "";
+      return selectedIds
+          .map((id: number) => options.find((o: any) => o.id === id)?.title)
+          .filter((t: any) => t)
+          .join(", ");
+  }, [selectedIds, options]);
 
   useEffect(() => {
     const lowerSearch = search.toLowerCase();
@@ -78,13 +89,40 @@ export const SearchableDropdown = ({
 
   useEffect(() => {
     const handleClickOutside = (event: any) => {
+      const portal = document.getElementById(`dropdown-portal-${name || label}`);
+      if (portal && portal.contains(event.target)) return;
+
       if (wrapperRef.current && !wrapperRef.current.contains(event.target)) {
           setIsOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [name, label]);
+
+  // Handle Position Updates for Portal
+  useEffect(() => {
+      if (isOpen && inputRef.current) {
+          const updatePos = () => {
+              if (inputRef.current) {
+                  const rect = inputRef.current.getBoundingClientRect();
+                  setDropdownPos({
+                      top: rect.bottom,
+                      left: rect.left,
+                      width: rect.width
+                  });
+              }
+          };
+          updatePos();
+          window.addEventListener("scroll", updatePos, true); 
+          window.addEventListener("resize", updatePos);
+          
+          return () => {
+              window.removeEventListener("scroll", updatePos, true);
+              window.removeEventListener("resize", updatePos);
+          };
+      }
+  }, [isOpen]);
 
   useEffect(() => {
       if (autoFocus && inputRef.current) {
@@ -99,7 +137,9 @@ export const SearchableDropdown = ({
             onSelect(id);
         } else {
             if (multiple) {
-                if (!selectedIds.includes(id)) {
+                if (selectedIds.includes(id)) {
+                    setFieldValue(name, selectedIds.filter((sid: any) => sid !== id));
+                } else {
                     setFieldValue(name, [...selectedIds, id]);
                 }
             } else {
@@ -114,7 +154,13 @@ export const SearchableDropdown = ({
     if(!multiple) setIsOpen(false);
   };
 
-  const handleRemove = (idToRemove: number) => setFieldValue(name, selectedIds.filter((id: number) => id !== idToRemove));
+  const handleRemove = (idToRemove: number) => {
+      if (onSelect) {
+          handleSelect(idToRemove); 
+      } else {
+          setFieldValue(name, selectedIds.filter((id: number) => id !== idToRemove));
+      }
+  };
   
   const handleKeyDown = async (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") {
@@ -152,7 +198,10 @@ export const SearchableDropdown = ({
           return;
       }
 
-      if (!search.trim()) return;
+      if (!search.trim()) {
+          setIsOpen(false);
+          return;
+      }
 
       const exactMatch = options.find((o: any) => o.title.toLowerCase() === search.toLowerCase());
       if (exactMatch) {
@@ -191,6 +240,9 @@ export const SearchableDropdown = ({
   };
   
   const handleBlur = (e: React.FocusEvent) => {
+      const portal = document.getElementById(`dropdown-portal-${name || label}`);
+      if (portal && portal.contains(e.relatedTarget as Node)) return;
+
       if (onCancel) {
           if (wrapperRef.current && wrapperRef.current.contains(e.relatedTarget as Node)) { return; }
           onCancel();
@@ -210,7 +262,7 @@ export const SearchableDropdown = ({
         ref={inputRef} 
         autoFocus={autoFocus} 
         type="text" 
-        placeholder={placeholder || (multiple || onSelect ? "+ Add item..." : "Select or Type to create...")} 
+        placeholder={selectedDisplay || placeholder || (multiple || onSelect ? "+ Add item..." : "Select or Type to create...")} 
         value={search} 
         onChange={(e) => {
             setSearch(e.target.value);
@@ -225,8 +277,25 @@ export const SearchableDropdown = ({
         style={{ marginBottom: 0, width: "100%" }} 
       />
       
-      {isOpen && (
-        <div style={{ position: "absolute", zIndex: 100, width: "100%", background: "var(--bg-surface)", borderRadius: "8px", border: "1px solid var(--border-color)", boxShadow: "0 4px 12px rgba(0,0,0,0.1)", marginTop: "4px" }}>
+      {isOpen && createPortal(
+        <div 
+            id={`dropdown-portal-${name || label}`}
+            style={{ 
+                position: "fixed", 
+                top: dropdownPos.top, 
+                left: dropdownPos.left, 
+                width: dropdownPos.width, 
+                zIndex: 9999, 
+                background: "var(--bg-surface)", 
+                borderRadius: "8px", 
+                border: "1px solid var(--border-color)", 
+                boxShadow: "0 4px 12px rgba(0,0,0,0.1)", 
+                marginTop: "4px",
+                maxHeight: "300px",
+                overflowY: "auto"
+            }}
+            onMouseDown={(e) => e.preventDefault()} 
+        >
             <ItemList 
                 items={filteredOptions}
                 selectedIds={selectedIds}
@@ -238,7 +307,8 @@ export const SearchableDropdown = ({
                 renderContent={renderOption}
                 emptyMessage={search ? <span>Press <strong>Enter</strong> to create "{search}"</span> : "Type to search..."}
             />
-        </div>
+        </div>,
+        document.body
       )}
 
       {multiple && !onSelect && selectedIds.length > 0 && (
@@ -255,7 +325,13 @@ export const SearchableDropdown = ({
                     onSave={onRename ? (val) => onRename(id, val) : undefined}
                     onClick={(e) => { 
                         e.preventDefault();
-                        if(onOpen) onOpen(id); 
+                        if(onOpen) {
+                            onOpen(id); 
+                        } else {
+                            setSearch(exists.title);
+                            setIsOpen(true);
+                            if(inputRef.current) inputRef.current.focus();
+                        }
                     }} 
                     isChip={true}
                     style={{ 
@@ -266,7 +342,7 @@ export const SearchableDropdown = ({
                       color: "var(--primary)",
                       fontWeight: 500,
                       fontSize: "0.85rem",
-                      cursor: onOpen ? "pointer" : "default"
+                      cursor: "pointer"
                     }}
                  />
                  
@@ -304,6 +380,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null); 
 
   const selectedExp = useMemo(() => {
       if (!experienceId || !experiences) return null;
@@ -340,7 +417,6 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   const [isAdding, setIsAdding] = useState(false);
   const [changingSkillDemoId, setChangingSkillDemoId] = useState<number | string | null>(null);
   
-  // Search & Selection States
   const [skillSearch, setSkillSearch] = useState("");
   const [explSearch, setExplSearch] = useState("");
   const [selectedDemos, setSelectedDemos] = useState<any[]>([]); 
@@ -351,12 +427,19 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
     setLocalAddedSkills([]);
   }, [relatedSkillIds]);
 
-  // Resizing Logic
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
         if (!draggingRef.current) return;
         const delta = e.clientX - startXRef.current;
-        const newWidth = Math.max(100, startWidthRef.current + delta); // Min width 100px
+        
+        let maxWidth = 600; 
+        if (containerRef.current) {
+             const containerWidth = containerRef.current.offsetWidth;
+             maxWidth = Math.max(100, containerWidth - 300);
+        }
+
+        const rawWidth = startWidthRef.current + delta;
+        const newWidth = Math.min(maxWidth, Math.max(100, rawWidth));
         setSkillColWidth(newWidth);
     };
     const handleMouseUp = () => {
@@ -373,10 +456,33 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
     };
   }, []);
 
+  useEffect(() => {
+      if (!containerRef.current) return;
+
+      const observer = new ResizeObserver(() => {
+          if (!containerRef.current) return;
+          
+          setSkillColWidth(prev => {
+              if (prev === null) return null; 
+              
+              const containerWidth = containerRef.current!.offsetWidth;
+              const maxAllowed = Math.max(100, containerWidth - 300);
+
+              if (prev > maxAllowed) return maxAllowed;
+              return prev;
+          });
+      });
+
+      observer.observe(containerRef.current);
+      return () => observer.disconnect();
+  }, []);
+
+  const canFilterByRelated = Array.isArray(relatedSkillIds) && relatedSkillIds.length > 0;
+
   const visibleSkills = useMemo(() => {
       let filtered = displaySkills;
 
-      if (filterRelated) {
+      if (filterRelated && canFilterByRelated) {
           filtered = filtered.filter((s: any) => {
             if (s.isOrphan) return true;
             if (localAddedSkills.includes(s.id)) return true;
@@ -395,7 +501,7 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
       }
 
       return filtered;
-  }, [displaySkills, filterRelated, relatedSkillIds, localAddedSkills, skillSearch, explSearch]);
+  }, [displaySkills, filterRelated, relatedSkillIds, localAddedSkills, skillSearch, explSearch, canFilterByRelated]);
 
   const availableSkills = (allSkills || []).filter((s: any) => !displaySkills.find((es: any) => es.id === s.id && !es.isOrphan));
 
@@ -492,13 +598,12 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
   };
 
   // --- DYNAMIC GRID COLUMNS ---
-  // Default to 1fr 1fr (half and half) if width is not set
   const gridCols = `35px ${skillColWidth ? `${skillColWidth}px` : "1fr"} 1fr auto`;
 
   if (!selectedExp) return null;
 
   return (
-    <div style={{ marginTop: "20px" }}> 
+    <div style={{ marginTop: "20px" }} ref={containerRef}> 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
           <label style={{marginBottom: 0, display: "block"}}>Skill Demonstrations</label>
           <div style={{ display: "flex", gap: "15px", alignItems: "center" }}>
@@ -512,15 +617,17 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
                       Delete Selected ({selectedDemos.length})
                   </button>
               )}
-              <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", cursor: "pointer", marginBottom: 0, display: "flex", alignItems: "center" }}>
-                <input 
-                    type="checkbox" 
-                    checked={filterRelated} 
-                    onChange={e => setFilterRelated(e.target.checked)} 
-                    style={{ width: "auto", margin: "0 6px 0 0", marginBottom: 0 }} 
-                />
-                Show only Related Skills
-              </label>
+              {canFilterByRelated && (
+                  <label style={{ fontSize: "0.85rem", color: "var(--text-muted)", cursor: "pointer", marginBottom: 0, display: "flex", alignItems: "center" }}>
+                    <input 
+                        type="checkbox" 
+                        checked={filterRelated} 
+                        onChange={e => setFilterRelated(e.target.checked)} 
+                        style={{ width: "auto", margin: "0 6px 0 0", marginBottom: 0 }} 
+                    />
+                    Show only Related Skills
+                  </label>
+              )}
           </div>
       </div>
 

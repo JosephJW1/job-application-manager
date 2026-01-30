@@ -291,6 +291,28 @@ export const EditJobRequirement = () => {
            const currentReq = values.requirements[reqIndex];
            if (!currentReq) return <div>Error: Requirement not found</div>;
            
+           const handleDeleteReq = async (indexToDelete: number) => {
+              if (values.requirements.length <= 1) {
+                  if (!window.confirm("This is the last requirement. Are you sure you want to delete it?")) return;
+                  
+                  if (window.confirm("Do you want to SAVE the job with NO requirements before exiting?\n\nClick OK to SAVE and Exit.\nClick Cancel to Exit WITHOUT saving.")) {
+                       const newValues = { ...values, requirements: [] };
+                       await handleSave(newValues, { resetForm });
+                       navigate("/", { state: { returnFromReq: true } });
+                  } else {
+                       navigate("/", { state: { returnFromReq: true } });
+                  }
+                  return;
+              }
+
+              if (!window.confirm("Are you sure you want to delete this requirement?")) return;
+
+              const newReqs = values.requirements.filter((_: any, i: number) => i !== indexToDelete);
+              setFieldValue("requirements", newReqs);
+              if (activeReqIndex >= newReqs.length) setActiveReqIndex(newReqs.length - 1);
+              else if (indexToDelete < activeReqIndex) setActiveReqIndex(activeReqIndex - 1);
+           };
+
            const reqSkillIds = (currentReq.skillIds || []).map((id: any) => id.toString());
 
            const filteredExperiences = experiences.filter(exp => {
@@ -422,6 +444,10 @@ export const EditJobRequirement = () => {
                                        setActiveReqIndex(newReqs.length - 1);
                                        setIsSwitchingReq(false);
                                     }}
+                                    onRename={(id: number, val: string) => {
+                                        setFieldValue(`requirements.${id}.description`, val);
+                                    }}
+                                    onDeleteOption={(id: number) => handleDeleteReq(id)}
                                  />
                              </div>
                          </div>
@@ -479,15 +505,8 @@ export const EditJobRequirement = () => {
                                     marginLeft: "8px",
                                     borderRadius: "4px"
                                 }}
-                                onClick={() => {
-                                   if (!window.confirm("Are you sure you want to delete this requirement?")) return;
-                                   const newReqs = values.requirements.filter((_: any, i: number) => i !== reqIndex);
-                                   if (newReqs.length === 0) newReqs.push({ description: "", skillIds: [], matches: [] });
-                                   setFieldValue("requirements", newReqs);
-                                   if (reqIndex >= newReqs.length) setActiveReqIndex(newReqs.length - 1);
-                                }}
+                                onClick={() => handleDeleteReq(reqIndex)}
                                 title="Delete Requirement"
-                                disabled={values.requirements.length <= 1} 
                               >
                                 🗑️
                               </button>

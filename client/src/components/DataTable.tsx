@@ -5,6 +5,10 @@ export interface Column<T> {
   header: string;
   render?: (item: T) => React.ReactNode;
   width?: string;
+  // New: Custom filter UI renderer
+  renderFilter?: (value: any, onChange: (val: any) => void) => React.ReactNode;
+  // New: Custom filter matching logic
+  filterMatcher?: (item: T, filterValue: any) => boolean;
 }
 
 interface DataTableProps<T extends { id: number }> {
@@ -27,18 +31,40 @@ export const DataTable = <T extends { id: number }>({
   addButtonLabel = "+ Create"
 }: DataTableProps<T>) => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [filters, setFilters] = useState<Record<string, string>>({});
+  // Allow filter values to be strings, numbers, or arrays (any)
+  const [filters, setFilters] = useState<Record<string, any>>({});
 
   // --- FILTERING ---
   const filteredData = useMemo(() => {
     return data.filter(item => {
       return columns.every(col => {
-        const filterValue = filters[col.key]?.toLowerCase();
-        if (!filterValue) return true;
+        const filterValue = filters[col.key];
         
-        // Handle nested properties or simple keys
-        const itemValue = String((item as any)[col.key] || "").toLowerCase();
-        return itemValue.includes(filterValue);
+        // Skip filtering if value is empty/null or empty array
+        if (filterValue === undefined || filterValue === "" || filterValue === null) return true;
+        if (Array.isArray(filterValue) && filterValue.length === 0) return true;
+        
+        // Use custom matcher if provided
+        if (col.filterMatcher) {
+            return col.filterMatcher(item, filterValue);
+        }
+        
+        // Default Filtering Logic
+        const itemValue = (item as any)[col.key];
+        const searchStr = String(filterValue).toLowerCase();
+
+        // Handle Array properties (e.g. searching "A" in ["A", "B"] or [{title: "A"}])
+        if (Array.isArray(itemValue)) {
+            return itemValue.some(v => {
+                // If array of objects, check title/name, otherwise stringify
+                const valStr = typeof v === 'object' && v !== null 
+                    ? (v.title || v.name || JSON.stringify(v)) 
+                    : String(v);
+                return String(valStr).toLowerCase().includes(searchStr);
+            });
+        }
+        
+        return String(itemValue || "").toLowerCase().includes(searchStr);
       });
     });
   }, [data, filters, columns]);
@@ -64,6 +90,14 @@ export const DataTable = <T extends { id: number }>({
       await onDelete(selectedIds);
       setSelectedIds([]);
     }
+  };
+
+  const clearFilter = (key: string) => {
+      setFilters(prev => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+      });
   };
 
   return (
@@ -92,7 +126,7 @@ export const DataTable = <T extends { id: number }>({
       </div>
 
       {/* TABLE */}
-      <div style={{ overflowX: 'auto' }}>
+      <div style={{ overflowX: 'auto', flex: 1 }}>
         <table className="data-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             {/* Headers */}
@@ -117,25 +151,65 @@ export const DataTable = <T extends { id: number }>({
             {/* Search Filters Row */}
             <tr style={{ background: 'var(--bg-input)', borderBottom: '1px solid var(--border-color)' }}>
               <th></th>
-              {columns.map(col => (
-                <th key={`filter-${col.key}`} style={{ padding: '5px 10px' }}>
-                  <input
-                    placeholder={`Filter ${col.header}...`}
-                    value={filters[col.key] || ""}
-                    onChange={(e) => setFilters(prev => ({ ...prev, [col.key]: e.target.value }))}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ 
-                        width: '100%', 
-                        fontSize: '0.85rem', 
-                        padding: '4px 8px', 
-                        border: '1px solid var(--border-color)', 
-                        borderRadius: '4px', 
-                        fontWeight: 'normal',
-                        marginBottom: 0
-                    }}
-                  />
-                </th>
-              ))}
+              {columns.map(col => {
+                const hasValue = filters[col.key] !== undefined && filters[col.key] !== "" && 
+                                 (!Array.isArray(filters[col.key]) || filters[col.key].length > 0);
+
+                return (
+                    <th key={`filter-${col.key}`} style={{ padding: '5px 10px', verticalAlign: 'top' }}>
+                      <div style={{ position: 'relative', width: '100%', display: 'flex', alignItems: 'center' }}>
+                        {col.renderFilter ? (
+                            // Custom Filter Component
+                            <div style={{ width: '100%' }} onClick={e => e.stopPropagation()}>
+                                {col.renderFilter(filters[col.key], (val) => setFilters(prev => ({ ...prev, [col.key]: val })))}
+                            </div>
+                        ) : (
+                            // Default Text Input
+                            <input
+                                placeholder={`Filter ${col.header}...`}
+                                value={filters[col.key] || ""}
+                                onChange={(e) => setFilters(prev => ({ ...prev, [col.key]: e.target.value }))}
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ 
+                                    width: '100%', 
+                                    fontSize: '0.85rem', 
+                                    padding: '4px 8px', 
+                                    paddingRight: '24px', // Space for clear button
+                                    border: '1px solid var(--border-color)', 
+                                    borderRadius: '4px', 
+                                    fontWeight: 'normal',
+                                    marginBottom: 0
+                                }}
+                            />
+                        )}
+
+                        {/* Clear Button (Visible if filter has value) */}
+                        {hasValue && (
+                            <button 
+                                onClick={(e) => { e.stopPropagation(); clearFilter(col.key); }}
+                                style={{
+                                    position: 'absolute',
+                                    right: '4px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    background: 'none',
+                                    border: 'none',
+                                    color: 'var(--text-muted)',
+                                    cursor: 'pointer',
+                                    fontSize: '1.2em',
+                                    lineHeight: 1,
+                                    padding: '0 4px',
+                                    zIndex: 10
+                                }}
+                                title="Clear Filter"
+                            >
+                                &times;
+                            </button>
+                        )}
+                      </div>
+                    </th>
+                );
+              })}
               {onDelete && <th></th>}
             </tr>
           </thead>

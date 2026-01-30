@@ -54,7 +54,7 @@ const Navbar = () => {
     return (
       <nav className="nav-bar">
         <Link to="/" style={{ fontSize: "1.2rem", fontWeight: "bold", color: "var(--primary)" }}>
-          Cover<span style={{color: "var(--text-main)"}}>Lette</span>
+          Cover<span style={{color: "var(--text-main)"}}>Letter</span>
         </Link>
         <div className="nav-links">
 

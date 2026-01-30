@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import api from "../api";
 import { useFormState } from "../context/FormStateContext"; 
 import { SearchableDropdown, FormObserver } from "./JobFormComponents"; 
-import { DataTable, type Column } from "../components/DataTable"; // FIXED: Type import
+import { DataTable, type Column } from "../components/DataTable"; 
 import type { Experience, JobTag } from "../types";
 
 // --- HELPER: Restores Draft Data ---
@@ -106,7 +106,24 @@ export const CreateJob = () => {
   };
 
   const initialValues = editingItem || { title: "", company: "", description: "", jobTagIds: [], requirements: [] };
+  
   const refreshTags = (newItem: JobTag) => setJobTags(prev => [...prev, newItem]);
+  
+  const updateTag = async (id: number, newTitle: string) => {
+    try {
+      await api.put(`/lists/jobtags/${id}`, { title: newTitle });
+      fetchData(); 
+    } catch (e: any) { alert("Error renaming tag: " + e.message); }
+  };
+
+  const deleteTag = async (id: number) => {
+    if (!window.confirm("Warning: You are about to delete this tag globally.")) return;
+    try {
+        await api.delete(`/lists/jobtags/${id}`);
+        fetchData();
+    } catch (e: any) { alert("Error deleting tag: " + e.message); }
+  };
+
   const getExpTitle = (id: string | number) => experiences.find(e => e.id.toString() === id?.toString())?.title || "-";
 
   const handleEditRequirement = (index: number, currentValues: any) => {
@@ -118,7 +135,55 @@ export const CreateJob = () => {
   // --- COLUMNS DEFINITION ---
   const jobColumns: Column<any>[] = [
       { key: "title", header: "Job Title", render: (j) => <strong>{j.title}</strong> },
-      { key: "company", header: "Company" }
+      { key: "company", header: "Company" },
+      { 
+          key: "JobTags", 
+          header: "Job Tags", 
+          width: "30%",
+          render: (job) => (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                  {job.JobTags && job.JobTags.map((t: any) => (
+                      <span key={t.id} style={{ 
+                          background: 'var(--bg-selected)', 
+                          color: 'var(--text-main)',
+                          padding: '2px 6px', 
+                          borderRadius: '4px', 
+                          fontSize: '0.75rem', 
+                          border: '1px solid var(--border-color)' 
+                      }}>
+                          {t.title}
+                      </span>
+                  ))}
+              </div>
+          ),
+          renderFilter: (value, onChange) => (
+              <SearchableDropdown
+                  options={jobTags}
+                  multiple={true}
+                  placeholder="Filter by Tags..."
+                  initialValue={value} 
+                  createEndpoint="/lists/jobtags"
+                  onSelect={(id: number) => {
+                      const current = (value as number[]) || [];
+                      // Toggle selection
+                      if (current.includes(id)) onChange(current.filter(i => i !== id));
+                      else onChange([...current, id]);
+                  }}
+                  onOptionCreated={refreshTags}
+                  onRename={updateTag}
+                  onDeleteOption={deleteTag}
+              />
+          ),
+          // Custom Matcher: Check if Job's tags include ANY of the selected filter tags
+          filterMatcher: (job, filterValue) => {
+              if (!Array.isArray(filterValue) || filterValue.length === 0) return true;
+              if (!job.JobTags || job.JobTags.length === 0) return false;
+              
+              const jobTagIds = job.JobTags.map((t: any) => t.id);
+              // OR Logic: Does job have at least one of the selected tags?
+              return filterValue.some((id: number) => jobTagIds.includes(id));
+          }
+      }
   ];
 
   if (view === "list") {
@@ -151,12 +216,20 @@ export const CreateJob = () => {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
                 <div>
                     <label>Job Title <span style={{color:'var(--danger)'}}>*</span></label>
-                    {/* Added autoFocus here */}
                     <Field name="title" required autoFocus />
                 </div>
                 <div><label>Company</label><Field name="company" placeholder="e.g. Acme Corp" /></div>
               </div>
-              <SearchableDropdown label="Job Tags" name="jobTagIds" options={jobTags} multiple={true} createEndpoint="/lists/jobtags" onOptionCreated={refreshTags} />
+              <SearchableDropdown 
+                  label="Job Tags" 
+                  name="jobTagIds" 
+                  options={jobTags} 
+                  multiple={true} 
+                  createEndpoint="/lists/jobtags" 
+                  onOptionCreated={refreshTags} 
+                  onRename={updateTag}
+                  onDeleteOption={deleteTag}
+              />
               <label>Description</label>
               <Field name="description" as="textarea" rows={3} placeholder="Paste the full job description here..." />
 

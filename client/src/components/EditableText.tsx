@@ -163,6 +163,7 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
              onChange={(e) => setTempVal(e.target.value)}
              onKeyDown={handleKeyDown}
              onBlur={handleCancel} 
+             onClick={(e) => e.stopPropagation()} 
              style={{ 
                width: "100%", 
                border: "none", 
