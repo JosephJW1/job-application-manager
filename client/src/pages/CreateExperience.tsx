@@ -249,24 +249,6 @@ export const CreateExperience = () => {
                     </div>
 
                     <div className="card">
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
-                            <h2 style={{marginTop: 0, marginBottom: 0}}>{editingItem && editingItem.id ? "Edit Experience" : "Create New Experience"}</h2>
-                            {editingItem && editingItem.id && (
-                                <button 
-                                    type="button" 
-                                    onClick={async () => {
-                                        if(window.confirm("Are you sure you want to delete this experience?")) {
-                                            await handleDelete([editingItem.id]);
-                                            setView("list");
-                                        }
-                                    }} 
-                                    className="btn-ghost" 
-                                    style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "4px 12px" }}
-                                >
-                                    Delete Experience
-                                </button>
-                            )}
-                        </div>
                         <Form>
                         <FormObserver />
                         
@@ -314,7 +296,12 @@ export const CreateExperience = () => {
                                     setFieldValue("SkillDemonstrations", [...(values.SkillDemonstrations || []), newDemo]);
                                     return Promise.resolve(false);
                                 },
-                                onDeleteSkillDemo: (_expId, skillId) => {
+                                onDeleteSkillDemo: (_expId, skillId, demoId) => {
+                                    if (demoId !== undefined && demoId !== null) {
+                                        const demos = (values.SkillDemonstrations || []).filter((d: any) => d.id !== demoId);
+                                        setFieldValue("SkillDemonstrations", demos);
+                                        return;
+                                    }
                                     if (!skillId) return; 
                                     const demos = (values.SkillDemonstrations || []).filter((d: any) => (d.SkillId || d.Skill?.id) !== skillId);
                                     setFieldValue("SkillDemonstrations", demos);

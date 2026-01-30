@@ -23,7 +23,7 @@ interface ExperienceEditorProps {
     onSkillDemoUpdate?: (expId: number, skillId: number, explanation: string) => Promise<void> | void;
     // Allow Promise<boolean | void> to cover both returning 'isRelated' (boolean) or nothing
     onAddSkillDemo?: (expId: number, skillId: number, explanation: string) => Promise<boolean | void>; 
-    onDeleteSkillDemo?: (expId: number, skillId: number | null) => Promise<void> | void;
+    onDeleteSkillDemo?: (expId: number, skillId: number | null, demoId?: number | string) => Promise<void> | void;
     onEnsureRelatedSkill?: (skillId: number) => Promise<void>;
     onGlobalSkillCreated?: (skill: any) => void;
     // UPDATED: Accept optional 3rd arg for the skill object

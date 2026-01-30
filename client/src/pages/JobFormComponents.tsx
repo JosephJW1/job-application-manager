@@ -597,7 +597,7 @@ export const ExplanationList = ({ targetId, experienceId, experience, experience
       for (const id of selectedDemos) {
           const skill = displaySkills.find((s: any) => s.id === id);
           if (skill && onDeleteSkillDemo) {
-              await onDeleteSkillDemo(selectedExp.id, skill.isOrphan ? null : skill.id);
+              await onDeleteSkillDemo(selectedExp.id, skill.isOrphan ? null : skill.id, skill.demoId);
           }
       }
       setSelectedDemos([]);
@@ -847,7 +847,7 @@ export const ExplanationList = ({ targetId, experienceId, experience, experience
                     type="button" 
                     onClick={() => {
                         if(window.confirm(`Remove "${s.title}" from this experience?`)) {
-                            onDeleteSkillDemo(selectedExp.id, s.isOrphan ? null : s.id);
+                            onDeleteSkillDemo(selectedExp.id, s.isOrphan ? null : s.id, s.demoId);
                         }
                     }}
                     className="btn-ghost"
