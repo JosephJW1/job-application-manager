@@ -270,7 +270,7 @@ export const CreateExperience = () => {
                                     
                                     // Save if only title changed (or if clean)
                                     if (isExpClean(valuesWithOriginalTitle, original)) {
-                                        handleSave(values, { resetForm: () => {} }, false);
+                                        handleSave(values, { resetForm: () => {} }, true);
                                     }
                                 }
                             }}
