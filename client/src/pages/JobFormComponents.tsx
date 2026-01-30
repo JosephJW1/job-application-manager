@@ -306,6 +306,7 @@ export const SearchableDropdown = ({
                 onOpen={onOpen}
                 renderContent={renderOption}
                 emptyMessage={search ? <span>Press <strong>Enter</strong> to create "{search}"</span> : "Type to search..."}
+                style={{ maxHeight: "none", overflowY: "visible" }}
             />
         </div>,
         document.body
