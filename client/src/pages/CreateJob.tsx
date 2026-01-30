@@ -256,7 +256,24 @@ export const CreateJob = () => {
               </div>
 
               <div className="card">
-                <h2 style={{marginTop: 0}}>{editingItem ? "Edit Job" : "Create New Job"}</h2>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
+                    <h2 style={{marginTop: 0, marginBottom: 0}}>{editingItem ? "Edit Job" : "Create New Job"}</h2>
+                    {editingItem && editingItem.id && (
+                        <button 
+                            type="button"
+                            className="btn-ghost"
+                            style={{ color: "var(--danger)", border: "1px solid var(--danger)", padding: "4px 12px" }}
+                            onClick={async () => {
+                                if (window.confirm("Are you sure you want to delete this job?")) {
+                                    await handleDelete([editingItem.id]);
+                                    setView("list");
+                                }
+                            }}
+                        >
+                            Delete Job
+                        </button>
+                    )}
+                </div>
                 <Form>
                   <FormObserver />
                   
