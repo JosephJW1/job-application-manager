@@ -83,7 +83,7 @@ router.post("/", validateToken, async (req, res) => {
   }
 });
 
-// UPDATE
+// UPDATE JOB (Full)
 router.put("/:id", validateToken, async (req, res) => {
   const { id } = req.params;
   const { title, company, description, jobTagIds, requirements } = req.body;
@@ -124,6 +124,39 @@ router.put("/:id", validateToken, async (req, res) => {
     }
 
     res.json({ message: "Updated Successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// UPDATE REQUIREMENT ONLY
+router.put("/:jobId/requirements/:reqId", validateToken, async (req, res) => {
+  const { jobId, reqId } = req.params;
+  const { description, skillIds, matches } = req.body;
+
+  try {
+    const requirement = await Requirement.findOne({ where: { id: reqId, JobId: jobId } });
+    if (!requirement) return res.status(404).json({ error: "Requirement not found" });
+
+    await requirement.update({ description });
+
+    if (skillIds) {
+      await requirement.setSkills(skillIds);
+    }
+
+    // Update Matches: Clear and Re-add strategy
+    await requirement.setMatchedExperiences([]);
+
+    if (matches && matches.length > 0) {
+      for (const match of matches) {
+        await requirement.addMatchedExperience(match.experienceId, {
+          through: { matchExplanation: match.matchExplanation }
+        });
+      }
+    }
+
+    res.json({ message: "Requirement Updated Successfully" });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: error.message });

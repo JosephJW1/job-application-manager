@@ -16,6 +16,9 @@ interface ExperienceEditorProps {
   otherExplanations?: any[];
   relatedSkillIds?: string[];
   
+  // Handler for Enter key in Title field
+  onTitleEnter?: () => void;
+
   handlers: {
     onSkillDemoUpdate?: (expId: number, skillId: number, explanation: string) => Promise<void> | void;
     // Allow Promise<boolean | void> to cover both returning 'isRelated' (boolean) or nothing
@@ -23,7 +26,8 @@ interface ExperienceEditorProps {
     onDeleteSkillDemo?: (expId: number, skillId: number | null) => Promise<void> | void;
     onEnsureRelatedSkill?: (skillId: number) => Promise<void>;
     onGlobalSkillCreated?: (skill: any) => void;
-    onSkillChange?: (demoId: number | string, newSkillId: number) => Promise<void> | void;
+    // UPDATED: Accept optional 3rd arg for the skill object
+    onSkillChange?: (demoId: number | string, newSkillId: number, newSkill?: any) => Promise<void> | void;
     onGlobalSkillRename?: (id: number, title: string) => Promise<void>;
     onGlobalSkillDelete?: (id: number) => Promise<void>;
   };
@@ -39,6 +43,7 @@ export const ExperienceEditor = ({
   explanationFieldName,
   otherExplanations,
   relatedSkillIds,
+  onTitleEnter,
   handlers
 }: ExperienceEditorProps) => {
   const [dropdownState, setDropdownState] = useState<{ field: string; top: number; left: number } | null>(null);
@@ -113,12 +118,31 @@ export const ExperienceEditor = ({
           {mode === "standalone" && (
              <div style={{ marginBottom: "5px" }}>
                 <label style={{fontSize: "0.8rem", color: "var(--text-muted)", display: "block", marginBottom: "2px"}}>Title</label>
-                <EditableText 
-                    value={experience.title} 
-                    onSave={(val) => handleUpdate('title', val)}
-                    placeholder="Experience Title..."
-                    style={{ fontSize: "1.1rem", fontWeight: "bold", width: "100%" }}
-                />
+                <Field name="title">
+                   {({ field }: any) => (
+                       <input 
+                          {...field}
+                          autoFocus
+                          placeholder="Experience Title..."
+                          style={{ 
+                              fontSize: "1.1rem", 
+                              fontWeight: "bold", 
+                              width: "100%",
+                              padding: "8px",
+                              border: "1px solid var(--border-color)",
+                              borderRadius: "4px",
+                              marginBottom: "5px",
+                              display: "block"
+                          }}
+                          onKeyDown={(e: React.KeyboardEvent) => {
+                              if (e.key === "Enter") {
+                                  e.preventDefault();
+                                  if (onTitleEnter) onTitleEnter();
+                              }
+                          }}
+                       />
+                   )}
+                </Field>
              </div>
           )}
 
@@ -223,6 +247,8 @@ export const ExperienceEditor = ({
       <ExplanationList 
           targetId={targetId} 
           experienceId={experience.id} 
+          // Pass the live experience object to ensure list updates when form values change
+          experience={experience}
           experiences={experiences} 
           allSkills={skills} 
           relatedSkillIds={relatedSkillIds} 

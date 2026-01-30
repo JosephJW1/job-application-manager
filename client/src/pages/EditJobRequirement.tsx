@@ -29,7 +29,18 @@ export const EditJobRequirement = () => {
         api.get("/experiences")
       ]);
       setSkills(skillRes.data);
-      setExperiences(expRes.data);
+      
+      // Merge fetched experiences with restored temporary experiences
+      const savedTemps = sessionStorage.getItem("job_temp_exps");
+      let initialExps = expRes.data;
+      if (savedTemps) {
+          const temps = JSON.parse(savedTemps);
+          // Only add temps that aren't already in the list (avoid dupes if IDs clash weirdly)
+          const uniqueTemps = temps.filter((t: any) => !initialExps.find((e: any) => e.id === t.id));
+          initialExps = [...initialExps, ...uniqueTemps];
+      }
+      setExperiences(initialExps);
+      
     } catch (e) { console.error(e); }
   };
 
@@ -41,7 +52,7 @@ export const EditJobRequirement = () => {
       setJobDraft(JSON.parse(storedDraft));
     } else {
       alert("No job draft found. Returning to Job list.");
-      navigate("/"); // UPDATED LINK
+      navigate("/"); 
     }
 
     if (location.state?.reqIndex !== undefined) {
@@ -97,21 +108,41 @@ export const EditJobRequirement = () => {
   const updateSkill = async (id: number, newTitle: string) => {
     try {
       await api.put(`/lists/skills/${id}`, { title: newTitle });
-      await fetchLists();
+      
+      setSkills(prev => prev.map(s => s.id === id ? { ...s, title: newTitle } : s));
+      
+      setExperiences(prev => prev.map(exp => ({
+          ...exp,
+          SkillDemonstrations: (exp.SkillDemonstrations || []).map((d: any) => {
+              if ((d.SkillId || d.Skill?.id) === id) {
+                  return { ...d, Skill: { ...(d.Skill || {}), id, title: newTitle } };
+              }
+              return d;
+          })
+      })));
+      
     } catch (e: any) { console.error(e); throw e; }
   };
 
   const deleteGlobalSkill = async (id: number) => {
     try {
         await api.delete(`/lists/skills/${id}`);
-        await fetchLists();
+        fetchLists(); // simpler to refetch here to be safe
     } catch (e: any) {
         alert("Error deleting skill: " + (e.response?.data?.error || e.message));
     }
   };
   
   const handleOpenExperience = (id: number, currentValues: any) => {
+      // 1. Save Form Draft
       sessionStorage.setItem("job_form_draft", JSON.stringify(currentValues));
+      
+      // 2. Save Temporary Experiences so they aren't lost on reload
+      const tempExps = experiences.filter(e => e.id < 0);
+      if (tempExps.length > 0) {
+          sessionStorage.setItem("job_temp_exps", JSON.stringify(tempExps));
+      }
+
       navigate("/add-experience", { 
           state: { 
               newId: id,
@@ -125,7 +156,8 @@ export const EditJobRequirement = () => {
       if (!window.confirm("Are you sure you want to delete this Experience permanently from the database?")) return;
       try {
           await api.delete(`/experiences/${id}`);
-          await fetchLists();
+          // Remove from local list immediately
+          setExperiences(prev => prev.filter(e => e.id !== id));
       } catch (e: any) { alert("Error: " + e.message); }
   };
 
@@ -148,13 +180,26 @@ export const EditJobRequirement = () => {
     }
     try {
         await api.put(`/experiences/${expId}/demo/${skillId}`, { explanation: newExplanation });
-        fetchLists();
+        // Optimistic update
+        setExperiences(prev => prev.map(e => {
+            if(e.id !== expId) return e;
+            return {
+                ...e,
+                SkillDemonstrations: (e.SkillDemonstrations || []).map((d: any) => {
+                    if((d.SkillId || d.Skill?.id) === skillId) {
+                        return { ...d, explanation: newExplanation, ExpSkillDemo: { explanation: newExplanation } };
+                    }
+                    return d;
+                })
+            }
+        }));
     } catch (e: any) { console.error(e); throw e; }
   };
   
   const handleSkillReassign = async (demoId: number, newSkillId: number) => {
       try {
           await api.put(`/experiences/demo/${demoId}`, { SkillId: newSkillId });
+          // Force refresh or optimistic update? Re-fetch safer for reassign
           fetchLists(); 
       } catch (e: any) { alert("Error reassigning skill: " + e.message); }
   };
@@ -208,7 +253,7 @@ export const EditJobRequirement = () => {
     } catch (e: any) { alert("Error removing skill: " + e.message); }
   };
 
-  const handleSave = async (values: any, { resetForm }: any) => {
+  const handleSave = async (values: any, { resetForm }: any, redirectTarget: "none" | "list" | "job" = "none") => {
     try {
       sessionStorage.setItem("job_form_draft", JSON.stringify(values));
 
@@ -219,6 +264,7 @@ export const EditJobRequirement = () => {
           });
       });
 
+      // Save Temp Experiences First
       const idMap = new Map<number, number>();
       for (const tempId of tempIds) {
           const tempExp = experiences.find(e => e.id === tempId);
@@ -235,6 +281,7 @@ export const EditJobRequirement = () => {
           }
       }
 
+      // Update values with new IDs
       const newValues = { ...values };
       newValues.requirements = newValues.requirements.map((r: any) => ({
           ...r,
@@ -244,9 +291,17 @@ export const EditJobRequirement = () => {
           }))
        }));
 
+      const currentReq = newValues.requirements[activeReqIndex];
+
+      // --- SAVE LOGIC ---
       if (newValues.id) {
-        await api.put(`/jobs/${newValues.id}`, newValues);
-        alert("Changes saved to Database successfully.");
+          if (currentReq.id) {
+               await api.put(`/jobs/${newValues.id}/requirements/${currentReq.id}`, currentReq);
+               alert("Requirement saved successfully.");
+          } else {
+               await api.put(`/jobs/${newValues.id}`, newValues);
+               alert("New Requirement saved (Job updated).");
+          }
       } else {
         alert("Changes saved to Draft (Job not created yet).");
       }
@@ -254,15 +309,32 @@ export const EditJobRequirement = () => {
       await fetchLists();
       resetForm({ values: newValues });
       setIsDirty(false);
+      
+      // Clean up temp store since they are saved now
+      sessionStorage.removeItem("job_temp_exps");
+
+      if (redirectTarget === "job") {
+          navigate("/", { state: { returnFromReq: true } });
+      } else if (redirectTarget === "list") {
+          sessionStorage.removeItem("job_form_draft"); 
+          navigate("/");
+      }
 
     } catch (e: any) {
       alert("Error saving: " + e.message);
     }
   };
 
-  const handleReturn = (isDirty: boolean) => {
+  const handleExitJob = (isDirty: boolean) => {
+      if (isDirty && !window.confirm("You have unsaved changes. Exit without saving?")) return;
+      sessionStorage.removeItem("job_temp_exps"); // Cleanup
+      navigate("/");
+  };
+  
+  const handleReturnToJob = (isDirty: boolean) => {
     if (isDirty && !window.confirm("You have unsaved changes. Return without saving?")) return;
-    navigate("/", { state: { returnFromReq: true } }); // UPDATED LINK
+    sessionStorage.removeItem("job_temp_exps"); // Cleanup
+    navigate("/", { state: { returnFromReq: true } });
   };
 
   const handleSwitchReq = (newIndex: number, isDirty: boolean, resetForm: any) => {
@@ -280,12 +352,8 @@ export const EditJobRequirement = () => {
 
   return (
     <div className="page-container">
-      <div className="card-header">
-         <h2 style={{margin:0}}>Edit Requirement</h2>
-         <button onClick={() => handleReturn(false)} className="btn-ghost">Back</button>
-      </div>
-
-      <Formik initialValues={jobDraft} enableReinitialize onSubmit={handleSave}>
+      
+      <Formik initialValues={jobDraft} enableReinitialize onSubmit={(values, helpers) => handleSave(values, helpers)}>
         {({ values, setFieldValue, dirty, submitForm, resetForm }) => {
            const reqIndex = activeReqIndex;
            const currentReq = values.requirements[reqIndex];
@@ -297,10 +365,9 @@ export const EditJobRequirement = () => {
                   
                   if (window.confirm("Do you want to SAVE the job with NO requirements before exiting?\n\nClick OK to SAVE and Exit.\nClick Cancel to Exit WITHOUT saving.")) {
                        const newValues = { ...values, requirements: [] };
-                       await handleSave(newValues, { resetForm });
-                       navigate("/", { state: { returnFromReq: true } });
+                       await handleSave(newValues, { resetForm }, "job");
                   } else {
-                       navigate("/", { state: { returnFromReq: true } });
+                       handleReturnToJob(false);
                   }
                   return;
               }
@@ -365,8 +432,10 @@ export const EditJobRequirement = () => {
                    const newId = response.data.id;
                    const savedExp = response.data;
 
+                   // 1. Update Experiences List (Swap temp with real)
                    setExperiences(prev => prev.map(e => e.id === tempId ? savedExp : e));
 
+                   // 2. Update Formik Matches to use new ID
                    const newReqs = values.requirements.map((req: any) => ({
                        ...req,
                        matches: (req.matches || []).map((m: any) => 
@@ -375,7 +444,14 @@ export const EditJobRequirement = () => {
                    }));
                    setFieldValue("requirements", newReqs);
 
-                   alert("Experience saved successfully!");
+                   // 3. Update active indices mapping
+                   setActiveMatchIndices(prev => {
+                       // If any index pointed to this requirement, it's fine, the index is same. 
+                       // But we need to ensure the component re-renders correctly.
+                       return { ...prev };
+                   });
+
+                   alert("Experience saved to Database!");
                } catch (e: any) {
                    alert("Failed to save experience: " + e.message);
                }
@@ -384,19 +460,27 @@ export const EditJobRequirement = () => {
            return (
             <Form>
               <FormObserver />
+
+              {/* TOP NAVIGATION */}
+              <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", marginBottom: "1rem" }}>
+                  {/* LEFT: Back to Job (Parent) */}
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button type="button" onClick={() => handleReturnToJob(dirty)} className="btn-ghost" style={{ paddingLeft: 0 }}>&larr; Back to Job</button>
+                    <button type="button" onClick={() => handleSave(values, { resetForm }, "job")} className="btn-ghost" style={{ border: "1px solid var(--border-color)", padding: "4px 12px" }}>Save + Back</button>
+                  </div>
+                  
+                  {/* RIGHT: Exit Job (List) */}
+                  <div style={{ display: "flex", gap: "10px" }}>
+                    <button type="button" onClick={() => handleSave(values, { resetForm }, "list")} className="btn-ghost" style={{ border: "1px solid var(--border-color)", padding: "4px 12px" }}>Save + Exit Job</button>
+                    <button type="button" onClick={() => handleExitJob(dirty)} className="btn-ghost" style={{ paddingRight: 0 }}>Exit Job &rarr;</button>
+                  </div>
+              </div>
+
               <div className="card edit-mode-container" style={{ borderColor: "var(--primary)" }}>
                   
-                  <div style={{
-                      display: "flex", 
-                      flexDirection: "column",
-                      gap: "5px", 
-                      marginBottom: "15px", 
-                      borderBottom: "1px solid var(--border-color)", 
-                      paddingBottom: "15px"
-                  }}>
-                      <label style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "2px" }}>
-                          Requirement {reqIndex + 1} of {values.requirements.length}
-                      </label>
+                  {/* REQUIREMENT TITLE / SWITCHER */}
+                  <div style={{ marginBottom: "20px" }}>
+                      <label>Requirement {reqIndex + 1} of {values.requirements.length}</label>
 
                       {isSwitchingReq ? (
                          <div style={{ display: "flex", alignItems: "stretch" }}>
@@ -483,11 +567,13 @@ export const EditJobRequirement = () => {
                                 onSave={async (val) => {
                                     setFieldValue(`requirements.${reqIndex}.description`, val);
                                 }}
+                                onClick={() => setIsSwitchingReq(true)}
                                 style={{ 
                                     flex: 1, 
                                     borderTopLeftRadius: 0, 
-                                    borderBottomLeftRadius: 0,
-                                    borderLeft: "1px solid var(--border-color)" 
+                                    borderBottomLeftRadius: 0, 
+                                    borderLeft: "1px solid var(--border-color)",
+                                    cursor: "pointer"
                                 }}
                              />
                              
@@ -778,7 +864,7 @@ export const EditJobRequirement = () => {
               
               <div style={{ marginTop: "20px", display: "flex", gap: "10px" }}>
                  <button type="button" onClick={() => submitForm()} className="btn-primary" style={{ flex: 1 }}>Save Changes</button>
-                 <button type="button" onClick={() => handleReturn(dirty)} className="btn-secondary" style={{ flex: 1 }}>Return to Job</button>
+                 <button type="button" onClick={() => handleReturnToJob(dirty)} className="btn-secondary" style={{ flex: 1 }}>Return to Job</button>
               </div>
             </Form>
            );

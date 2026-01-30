@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
-import { useFormikContext } from "formik";
+import { useFormikContext } from "formik"; 
 import { useFormState } from "../context/FormStateContext";
 import api from "../api";
 import { EditableText, insertTextAtCursor } from "../components/EditableText";
@@ -30,7 +30,9 @@ export const SearchableDropdown = ({
   onDeleteOption,
   onOpen
 }: any) => {
-  const { values, setFieldValue } = useFormikContext<any>() || {};
+  const formikContext = useFormikContext<any>();
+  const { values, setFieldValue } = formikContext || {};
+  
   const [search, setSearch] = useState(initialSearch || ""); 
   const [isOpen, setIsOpen] = useState(false);
   const [filteredOptions, setFilteredOptions] = useState<any[]>([]);
@@ -58,7 +60,6 @@ export const SearchableDropdown = ({
     return Array.isArray(rawValue) ? rawValue : (rawValue ? [rawValue] : []);
   }, [rawValue]);
 
-  // NEW: Calculate joined string of selected titles for placeholder
   const selectedDisplay = useMemo(() => {
       if (selectedIds.length === 0 || !options) return "";
       return selectedIds
@@ -100,7 +101,6 @@ export const SearchableDropdown = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [name, label]);
 
-  // Handle Position Updates for Portal
   useEffect(() => {
       if (isOpen && inputRef.current) {
           const updatePos = () => {
@@ -375,17 +375,20 @@ export const SearchableDropdown = ({
   );
 };
 
-export const ExplanationList = ({ targetId, experienceId, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated, onSkillChange, onGlobalSkillRename, onGlobalSkillDelete, onEnsureRelatedSkill }: any) => {
+// Added 'experience' prop to ExplanationList
+export const ExplanationList = ({ targetId, experienceId, experience, experiences, allSkills, relatedSkillIds, onSkillDemoUpdate, onAddSkillDemo, onDeleteSkillDemo, onGlobalSkillCreated, onSkillChange, onGlobalSkillRename, onGlobalSkillDelete, onEnsureRelatedSkill }: any) => {
   const [skillColWidth, setSkillColWidth] = useState<number | null>(null);
   const draggingRef = useRef(false);
   const startXRef = useRef(0);
   const startWidthRef = useRef(0);
   const containerRef = useRef<HTMLDivElement>(null); 
 
+  // Prefer passed experience object (live form data) over ID lookup (stale list)
   const selectedExp = useMemo(() => {
+      if (experience) return experience;
       if (!experienceId || !experiences) return null;
       return experiences.find((e: any) => e.id.toString() === experienceId.toString());
-  }, [experienceId, experiences]);
+  }, [experience, experienceId, experiences]);
   
   const displaySkills = useMemo(() => {
     if (!selectedExp) return [];
@@ -477,7 +480,8 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
       return () => observer.disconnect();
   }, []);
 
-  const canFilterByRelated = Array.isArray(relatedSkillIds) && relatedSkillIds.length > 0;
+  // UPDATED: Show checkbox if array exists, even if empty
+  const canFilterByRelated = Array.isArray(relatedSkillIds);
 
   const visibleSkills = useMemo(() => {
       let filtered = displaySkills;
@@ -532,7 +536,8 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
           if (onGlobalSkillCreated) onGlobalSkillCreated(res.data);
           
           if (forRowId !== null && currentDemoId !== null) {
-              if (onSkillChange) onSkillChange(currentDemoId, res.data.id);
+              // FIX: Pass newly created skill object (res.data) to onSkillChange to avoid stale state issues
+              if (onSkillChange) onSkillChange(currentDemoId, res.data.id, res.data);
               setChangingSkillDemoId(null);
           } else {
               setNewSkillId(res.data.id);
@@ -698,6 +703,12 @@ export const ExplanationList = ({ targetId, experienceId, experiences, allSkills
       </div>
 
       <div style={{ display: "grid", gap: "8px" }}>
+        {visibleSkills.length === 0 && filterRelated && canFilterByRelated && (
+            <div style={{gridColumn: "1 / -1", textAlign: "center", padding: "10px", color: "var(--text-muted)", fontStyle: "italic"}}>
+                No related skills found in this experience.
+            </div>
+        )}
+        
         {visibleSkills.map((s: any) => (
           <div key={s.id} style={{ display: "grid", gridTemplateColumns: gridCols, gap: "8px", alignItems: "stretch" }}>
              

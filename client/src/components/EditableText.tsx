@@ -4,22 +4,18 @@ import { useState, useRef, useEffect } from "react";
 export const insertTextAtCursor = (targetId: string, text: string | undefined, e: React.MouseEvent | React.ChangeEvent | { ctrlKey?: boolean }) => {
   if (!text) return;
   
-  // FIX: Prevent default browser behavior (navigating, scrolling on some elements)
   if (e && 'preventDefault' in e && typeof (e as any).preventDefault === 'function') {
       (e as any).preventDefault();
   }
   
   let valToInsert = text;
-  // Logic: Lowercase unless ctrlKey is pressed (or passed manually)
   if (e && 'ctrlKey' in e && !(e as any).ctrlKey) {
      valToInsert = text.toLowerCase();
   }
 
   const textarea = document.getElementById(targetId) as HTMLTextAreaElement;
   if (textarea) {
-    // FIX: Focus the textarea so insertion works, but prevent the browser from scrolling the page
     textarea.focus({ preventScroll: true });
-    
     const success = document.execCommand("insertText", false, valToInsert);
     if (!success) {
       const start = textarea.selectionStart;
@@ -34,13 +30,13 @@ export const insertTextAtCursor = (targetId: string, text: string | undefined, e
 interface EditableTextProps {
   value?: string; 
   placeholder?: string;
-  targetId?: string; // Optional: Only needed if default click behavior is to insert text
+  targetId?: string; 
   onSave?: (newValue: string) => Promise<void>; 
   onClick?: (e: React.MouseEvent) => void; 
   style?: React.CSSProperties;
   className?: string;
   isChip?: boolean;
-  children?: React.ReactNode; // NEW: Allow custom content display
+  children?: React.ReactNode; 
 }
 
 export const EditableText = ({ value, placeholder, targetId, onSave, onClick, style, className, isChip, children }: EditableTextProps) => {
@@ -54,12 +50,8 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
 
   const handleClick = (e: React.MouseEvent) => {
     if (isEditing) return;
-    
-    if (onClick) {
-        onClick(e);
-    } else if (targetId) {
-        insertTextAtCursor(targetId, value, e);
-    }
+    if (onClick) onClick(e);
+    else if (targetId) insertTextAtCursor(targetId, value, e);
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
@@ -69,7 +61,6 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
 
   const handleSave = async () => {
     if (!onSave) return;
-    
     setLoading(true);
     try {
       await onSave(tempVal);
@@ -96,18 +87,20 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
     }
   };
 
-  const { padding, paddingLeft, paddingRight, paddingTop, paddingBottom, ...safeStyle } = style || {};
+  // FIX: Explicitly separate 'border' from rest of styles to avoid React conflict warnings
+  const { 
+      padding, paddingLeft, paddingRight, paddingTop, paddingBottom, 
+      border, // Extracting border so it's not in safeStyle
+      ...safeStyle 
+  } = style || {};
 
-  // Standardize padding logic to ensure identical height in both states
   const standardPadding = isChip ? "4px 8px" : "8px 12px";
-
   const borderColor = isEditing ? "var(--primary)" : "var(--border-color)";
+  const hasBorderOverride = border !== undefined;
 
-  // Detect if 'border' shorthand is explicitly passed in props.
-  const hasBorderOverride = style?.border !== undefined;
-
-  // Use explicit sides instead of 'border' shorthand for defaults to avoid React warnings when mixing shorthands.
-  const defaultBorderStyles = hasBorderOverride ? {} : {
+  // Use explicit sides if no override is provided, OR strict shorthand if override is provided.
+  // This prevents switching between "border" and "borderTop" etc in React reconciliation.
+  const defaultBorderStyles = hasBorderOverride ? { border } : {
       borderTop: `1px solid ${borderColor}`,
       borderRight: `1px solid ${borderColor}`,
       borderBottom: `1px solid ${borderColor}`,
@@ -121,7 +114,6 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
     padding: 0,
     overflow: "hidden",
     cursor: isEditing ? "default" : (onClick || targetId ? "pointer" : "default"),
-    // Apply defaults first, then overrides
     ...defaultBorderStyles, 
     ...safeStyle,
   };
@@ -169,8 +161,8 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
                border: "none", 
                background: "var(--bg-surface)", 
                font: "inherit", 
-               padding: standardPadding, // Match View mode padding exactly
-               margin: 0, // Reset any global input margins (fixes height jump)
+               padding: standardPadding,
+               margin: 0,
                outline: "none",
                color: "var(--text-main)"
              }}
