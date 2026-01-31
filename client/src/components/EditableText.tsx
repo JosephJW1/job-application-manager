@@ -9,7 +9,7 @@ export const insertTextAtCursor = (targetId: string, text: string | undefined, e
   }
   
   let valToInsert = text;
-  if (e && 'ctrlKey' in e && (e as any).ctrlKey) {
+  if (e && 'ctrlKey' in e && !(e as any).ctrlKey) {
      valToInsert = text.toLowerCase();
   }
 
@@ -75,6 +75,21 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
   const handleCancel = () => {
     setTempVal(value || "");
     setIsEditing(false);
+  };
+
+  const handleBlur = () => {
+    if (tempVal !== (value || "")) {
+      // Warn the user if they try to leave with unsaved changes
+      if (window.confirm("You have unsaved changes. The rename will not be saved. Do you want to discard them?")) {
+        handleCancel();
+      } else {
+        // User wants to keep editing, refocus the input
+        setTimeout(() => inputRef.current?.focus(), 0);
+      }
+    } else {
+      // No changes, just cancel/close
+      handleCancel();
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -154,7 +169,7 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
              value={tempVal}
              onChange={(e) => setTempVal(e.target.value)}
              onKeyDown={handleKeyDown}
-             onBlur={handleCancel} 
+             onBlur={handleBlur} 
              onClick={(e) => e.stopPropagation()} 
              style={{ 
                width: "100%", 
