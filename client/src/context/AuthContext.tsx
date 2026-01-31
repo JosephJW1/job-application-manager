@@ -6,6 +6,7 @@ interface AuthContextType {
   authState: { username: string; id: number; status: boolean };
   setAuthState: React.Dispatch<React.SetStateAction<{ username: string; id: number; status: boolean }>>;
   logout: () => void;
+  isLoading: boolean;
 }
 
 export const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -16,6 +17,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     id: 0,
     status: false,
   });
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const token = localStorage.getItem("accessToken");
@@ -33,10 +35,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             status: true,
           });
         }
+        setIsLoading(false);
       }).catch(() => {
         // If server is down or error occurs, log user out
         setAuthState({ username: "", id: 0, status: false });
+        setIsLoading(false);
       });
+    } else {
+      setIsLoading(false);
     }
   }, []);
 
@@ -46,7 +52,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ authState, setAuthState, logout }}>
+    <AuthContext.Provider value={{ authState, setAuthState, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation, Navigate } from "react-router-dom";
 import { AuthProvider, AuthContext } from "./context/AuthContext";
 import { FormStateProvider, useFormState } from "./context/FormStateContext"; 
 import { useContext, useEffect, useState } from "react"; // Added useEffect, useState
@@ -74,6 +74,7 @@ const Navbar = () => {
                   if(isDirty && !window.confirm("Unsaved changes. Logout anyway?")) return;
                   setIsDirty(false);
                   logout(); 
+                  navigate("/login");
               }} className="btn-secondary" style={{padding: "0.4rem 1rem"}}>Logout</button>
             </>
           )}
@@ -92,42 +93,62 @@ const Navbar = () => {
     );
   };
 
-// ... [Rest of App component stays the same] ...
+// Extracted to handle Context consumption for routing logic
+const AppRoutes = () => {
+  const { authState, isLoading } = useContext(AuthContext);
+
+  if (isLoading) {
+    return <div className="loading-container">Loading...</div>;
+  }
+
+  return (
+    <>
+      <Navbar />
+      <Routes>
+        <Route 
+          path="/" 
+          element={authState.status ? <CreateJob /> : <Navigate to="/login" replace />} 
+        />
+        <Route 
+          path="/login" 
+          element={!authState.status ? <Login /> : <Navigate to="/" replace />} 
+        />
+        <Route path="/register" element={<Register />} />
+        
+        <Route 
+          path="/add-skill" 
+          element={
+            <CreateSimple 
+              title="Skill" 
+              endpoint="/lists/skills" 
+            />
+          } 
+        />
+
+        <Route 
+          path="/add-job-tags" 
+          element={
+            <CreateSimple 
+              title="Job Tag" 
+              endpoint="/lists/jobtags" 
+            />
+          } 
+        />
+
+        <Route path="/add-experience" element={<CreateExperience />} />
+        <Route path="/edit-requirement" element={<EditJobRequirement />} />
+
+      </Routes>
+    </>
+  );
+};
+
 function App() {
   return (
     <AuthProvider>
       <FormStateProvider>
         <Router>
-          <Navbar />
-          <Routes>
-            <Route path="/" element={<CreateJob />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            
-            <Route 
-              path="/add-skill" 
-              element={
-                <CreateSimple 
-                  title="Skill" 
-                  endpoint="/lists/skills" 
-                />
-              } 
-            />
-
-            <Route 
-              path="/add-job-tags" 
-              element={
-                <CreateSimple 
-                  title="Job Tag" 
-                  endpoint="/lists/jobtags" 
-                />
-              } 
-            />
-
-            <Route path="/add-experience" element={<CreateExperience />} />
-            <Route path="/edit-requirement" element={<EditJobRequirement />} />
-
-          </Routes>
+          <AppRoutes />
         </Router>
       </FormStateProvider>
     </AuthProvider>
