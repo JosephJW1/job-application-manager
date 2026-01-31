@@ -4,9 +4,10 @@ const { Job, JobTag, Requirement, Skill, Experience, RequirementMatch } = requir
 const { validateToken } = require("../middlewares/AuthMiddleware");
 
 // GET ALL
-router.get("/", async (req, res) => {
+router.get("/", validateToken, async (req, res) => {
   try {
     const jobs = await Job.findAll({
+      where: { UserId: req.user.id },
       order: [['createdAt', 'DESC']],
       include: [
         { model: JobTag, through: { attributes: [] } }, 
@@ -35,7 +36,12 @@ router.post("/", validateToken, async (req, res) => {
   const { title, company, description, jobTagIds, requirements } = req.body;
 
   try {
-    const newJob = await Job.create({ title, company, description });
+    const newJob = await Job.create({ 
+      title, 
+      company, 
+      description,
+      UserId: req.user.id 
+    });
 
     if (jobTagIds && jobTagIds.length > 0) {
       await newJob.addJobTags(jobTagIds);
@@ -66,7 +72,8 @@ router.post("/", validateToken, async (req, res) => {
     }
     
     // Return full object
-    const createdJob = await Job.findByPk(newJob.id, {
+    const createdJob = await Job.findOne({
+        where: { id: newJob.id, UserId: req.user.id },
         include: [
           JobTag, 
           { 
@@ -89,7 +96,7 @@ router.put("/:id", validateToken, async (req, res) => {
   const { title, company, description, jobTagIds, requirements } = req.body;
 
   try {
-    const job = await Job.findByPk(id);
+    const job = await Job.findOne({ where: { id: id, UserId: req.user.id } });
     if (!job) return res.status(404).json({ error: "Job not found" });
 
     await job.update({ title, company, description });
@@ -136,6 +143,10 @@ router.put("/:jobId/requirements/:reqId", validateToken, async (req, res) => {
   const { description, skillIds, matches } = req.body;
 
   try {
+    // Verify Job belongs to user first
+    const job = await Job.findOne({ where: { id: jobId, UserId: req.user.id } });
+    if (!job) return res.status(404).json({ error: "Job not found or access denied" });
+
     const requirement = await Requirement.findOne({ where: { id: reqId, JobId: jobId } });
     if (!requirement) return res.status(404).json({ error: "Requirement not found" });
 
@@ -166,7 +177,8 @@ router.put("/:jobId/requirements/:reqId", validateToken, async (req, res) => {
 router.delete("/:id", validateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    await Job.destroy({ where: { id: id } });
+    const deleted = await Job.destroy({ where: { id: id, UserId: req.user.id } });
+    if (!deleted) return res.status(404).json({ error: "Job not found" });
     res.json({ message: "Deleted Successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });

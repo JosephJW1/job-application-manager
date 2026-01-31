@@ -11,5 +11,12 @@ module.exports = (sequelize, DataTypes) => {
     },
   });
 
+  Users.associate = (models) => {
+    Users.hasMany(models.Job, { onDelete: "cascade" });
+    Users.hasMany(models.Experience, { onDelete: "cascade" });
+    Users.hasMany(models.Skill, { onDelete: "cascade" });
+    Users.hasMany(models.JobTag, { onDelete: "cascade" });
+  };
+
   return Users;
 };

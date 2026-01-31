@@ -39,6 +39,12 @@ module.exports = (sequelize, DataTypes) => {
     Experience.belongsToMany(models.Requirement, {
       through: models.RequirementMatch 
     });
+
+    Experience.belongsTo(models.Users, {
+      foreignKey: {
+        allowNull: false,
+      },
+    });
   };
 
   return Experience;

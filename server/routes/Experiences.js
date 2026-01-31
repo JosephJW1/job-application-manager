@@ -4,9 +4,10 @@ const { Experience, ExpSkillDemo, Skill } = require("../models");
 const { validateToken } = require("../middlewares/AuthMiddleware");
 
 // GET ALL
-router.get("/", async (req, res) => {
+router.get("/", validateToken, async (req, res) => {
   try {
     const list = await Experience.findAll({
+      where: { UserId: req.user.id },
       include: [
         {
           model: ExpSkillDemo,
@@ -28,7 +29,12 @@ router.post("/", validateToken, async (req, res) => {
   
   try {
     const newExp = await Experience.create({ 
-      title, description, location, position, duration 
+      title, 
+      description, 
+      location, 
+      position, 
+      duration,
+      UserId: req.user.id 
     });
     
     if (skillDemonstrations && skillDemonstrations.length > 0) {
@@ -57,8 +63,12 @@ router.put("/demo/:id", validateToken, async (req, res) => {
   const { SkillId } = req.body;
   
   try {
-    const demo = await ExpSkillDemo.findByPk(id);
+    const demo = await ExpSkillDemo.findByPk(id, {
+      include: { model: Experience, attributes: ['UserId'] }
+    });
+
     if (!demo) return res.status(404).json({ error: "Demonstration not found" });
+    if (demo.Experience.UserId !== req.user.id) return res.status(403).json({ error: "Access denied" });
 
     // Check for duplicates in the same experience
     if (SkillId) {
@@ -90,17 +100,26 @@ router.put("/demo/:id", validateToken, async (req, res) => {
 router.delete("/demo/:id", validateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    await ExpSkillDemo.destroy({ where: { id: id } });
+    const demo = await ExpSkillDemo.findByPk(id, {
+      include: { model: Experience, attributes: ['UserId'] }
+    });
+    if (!demo) return res.status(404).json({ error: "Not found" });
+    if (demo.Experience.UserId !== req.user.id) return res.status(403).json({ error: "Access denied" });
+
+    await demo.destroy();
     res.json({ message: "Deleted" });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // UPDATE SPECIFIC SKILL DEMONSTRATION EXPLANATION
 router.put("/:id/demo/:skillId", validateToken, async (req, res) => {
-  const { id, skillId } = req.params;
+  const { id, skillId } = req.params; // id is ExperienceId
   const { explanation } = req.body;
 
   try {
+    const experience = await Experience.findOne({ where: { id: id, UserId: req.user.id } });
+    if (!experience) return res.status(404).json({ error: "Experience not found" });
+
     await ExpSkillDemo.update(
       { explanation: explanation },
       { where: { ExperienceId: id, SkillId: skillId } }
@@ -117,6 +136,9 @@ router.post("/:id/demo", validateToken, async (req, res) => {
   const { id } = req.params;
   const { skillId, explanation } = req.body;
   try {
+    const experience = await Experience.findOne({ where: { id: id, UserId: req.user.id } });
+    if (!experience) return res.status(404).json({ error: "Experience not found" });
+
     const item = await ExpSkillDemo.create({
       ExperienceId: id,
       SkillId: skillId,
@@ -130,6 +152,9 @@ router.post("/:id/demo", validateToken, async (req, res) => {
 router.delete("/:id/demo/:skillId", validateToken, async (req, res) => {
   const { id, skillId } = req.params;
   try {
+    const experience = await Experience.findOne({ where: { id: id, UserId: req.user.id } });
+    if (!experience) return res.status(404).json({ error: "Experience not found" });
+
     await ExpSkillDemo.destroy({
       where: { ExperienceId: id, SkillId: skillId }
     });
@@ -143,9 +168,11 @@ router.put("/:id", validateToken, async (req, res) => {
   const { title, description, location, position, duration, skillDemonstrations } = req.body;
 
   try {
-    await Experience.update(
-      { title, description, location, position, duration },
-      { where: { id: id } }
+    const experience = await Experience.findOne({ where: { id: id, UserId: req.user.id } });
+    if (!experience) return res.status(404).json({ error: "Experience not found" });
+
+    await experience.update(
+      { title, description, location, position, duration }
     );
 
     if (Array.isArray(skillDemonstrations)) {
@@ -174,7 +201,8 @@ router.put("/:id", validateToken, async (req, res) => {
 router.delete("/:id", validateToken, async (req, res) => {
   const { id } = req.params;
   try {
-    await Experience.destroy({ where: { id: id } });
+    const deleted = await Experience.destroy({ where: { id: id, UserId: req.user.id } });
+    if (!deleted) return res.status(404).json({ error: "Experience not found" });
     res.json({ message: "Deleted Successfully" });
   } catch (error) {
     res.status(500).json({ error: error.message });

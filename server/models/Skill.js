@@ -18,6 +18,12 @@ module.exports = (sequelize, DataTypes) => {
       through: "RequirementSkills",
       as: 'Requirements'
     });
+
+    Skill.belongsTo(models.Users, {
+      foreignKey: {
+        allowNull: false,
+      },
+    });
   };
 
   return Skill;

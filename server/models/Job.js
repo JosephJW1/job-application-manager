@@ -21,6 +21,12 @@ module.exports = (sequelize, DataTypes) => {
     Job.hasMany(models.Requirement, { 
       onDelete: "cascade" 
     });
+
+    Job.belongsTo(models.Users, {
+      foreignKey: {
+        allowNull: false,
+      },
+    });
   };
 
   return Job;
