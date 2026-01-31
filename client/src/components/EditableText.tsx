@@ -9,7 +9,7 @@ export const insertTextAtCursor = (targetId: string, text: string | undefined, e
   }
   
   let valToInsert = text;
-  if (e && 'ctrlKey' in e && !(e as any).ctrlKey) {
+  if (e && 'ctrlKey' in e && (e as any).ctrlKey) {
      valToInsert = text.toLowerCase();
   }
 

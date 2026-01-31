@@ -827,7 +827,7 @@ export const EditJobRequirement = () => {
                                               <select
                                                   style={{ width: "100%", borderTop: "none", borderTopLeftRadius: 0, borderTopRightRadius: 0, background: "var(--bg-input)", fontSize: "0.8rem", color: "var(--text-muted)", marginBottom: "10px", cursor: "pointer", padding: "4px 8px", height: "auto" }}
                                                   value=""
-                                                  onChange={(e) => { if(e.target.value) { insertTextAtCursor(targetId, e.target.value, { ctrlKey: true } as any); e.target.value = ""; } }}
+                                                  onChange={(e) => { if(e.target.value) { insertTextAtCursor(targetId, e.target.value, { ctrlKey: false } as any); e.target.value = ""; } }}
                                               >
                                                   <option value="" disabled selected hidden>-- Copy from similar requirement --</option>
                                                   {otherExplanations.map((item: any, idx: number) => (
