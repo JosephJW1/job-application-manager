@@ -604,7 +604,7 @@ export const ExplanationList = ({ targetId, experienceId, experience, experience
   };
 
   // --- DYNAMIC GRID COLUMNS ---
-  const gridCols = `35px ${skillColWidth ? `${skillColWidth}px` : "1fr"} 1fr auto`;
+  const gridCols = `35px ${skillColWidth ? `${skillColWidth}px` : "minmax(0, 1fr)"} 1fr auto`;
 
   if (!selectedExp) return null;
 
@@ -723,7 +723,7 @@ export const ExplanationList = ({ targetId, experienceId, experience, experience
                  />
              </div>
 
-             <div style={{ height: "100%", position: "relative" }}>
+             <div style={{ height: "100%", position: "relative", minWidth: 0 }}>
                  {changingSkillDemoId === s.demoId ? (
                      <div style={{ display: "flex", height: "100%", alignItems: "stretch" }}>
                          <div 
