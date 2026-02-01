@@ -43,7 +43,7 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
   const [isEditing, setIsEditing] = useState(false);
   const [tempVal, setTempVal] = useState(value || "");
   const [loading, setLoading] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { setTempVal(value || ""); }, [value]);
   useEffect(() => { if (isEditing && inputRef.current) inputRef.current.focus(); }, [isEditing]);
@@ -75,21 +75,6 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
   const handleCancel = () => {
     setTempVal(value || "");
     setIsEditing(false);
-  };
-
-  const handleBlur = () => {
-    if (tempVal !== (value || "")) {
-      // Warn the user if they try to leave with unsaved changes
-      if (window.confirm("You have unsaved changes. The rename will not be saved. Do you want to discard them?")) {
-        handleCancel();
-      } else {
-        // User wants to keep editing, refocus the input
-        setTimeout(() => inputRef.current?.focus(), 0);
-      }
-    } else {
-      // No changes, just cancel/close
-      handleCancel();
-    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -164,13 +149,14 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
     >
       {isEditing ? (
         <div style={{ flex: 1, display: "flex", width: "100%" }}>
-           <input 
+           <textarea 
              ref={inputRef}
              value={tempVal}
              onChange={(e) => setTempVal(e.target.value)}
              onKeyDown={handleKeyDown}
-             onBlur={handleBlur} 
+             onBlur={handleCancel} 
              onClick={(e) => e.stopPropagation()} 
+             rows={1}
              style={{ 
                width: "100%", 
                border: "none", 
@@ -179,7 +165,11 @@ export const EditableText = ({ value, placeholder, targetId, onSave, onClick, st
                padding: standardPadding,
                margin: 0,
                outline: "none",
-               color: "var(--text-main)"
+               color: "var(--text-main)",
+               resize: "vertical",
+               overflowY: "auto",
+               whiteSpace: "pre-wrap",
+               minHeight: "2.5rem"
              }}
            />
         </div>
